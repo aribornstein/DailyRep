@@ -186,6 +186,7 @@
       border-radius: 999px;
       background: rgba(255,149,0,0.95);
       box-shadow: 0 6px 18px rgba(0,0,0,.35);
+      z-index: 2;
       pointer-events: auto;
       cursor: grab;
       transition: transform 180ms ease;
@@ -217,6 +218,7 @@
       letter-spacing: .02em;
       padding-left: 38px; /* visually balance the knob */
       opacity: .85;
+      pointer-events: none;
     }
 
     /* Hide scrollbars for the strip on iOS */
@@ -1358,6 +1360,10 @@
 
       // Disable tap while resting
       $("tapArea").style.opacity = session.resting ? '0.8' : '1';
+
+      // Hide slider during rest; show it during active reps
+      const finishBtn = $("finishSetBtn");
+      if (finishBtn) finishBtn.style.display = session.resting ? 'none' : 'flex';
     }
 
     function restSecondsForSet(setIndex) {
