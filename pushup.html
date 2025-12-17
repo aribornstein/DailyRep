@@ -25,6 +25,22 @@
     ion-content {
       --background: linear-gradient(180deg, #06080c 0%, #0b0f14 40%, #0b0f14 100%);
     }
+
+    /* Fix iOS alert readability: alerts can default to light styling while app is dark */
+    ion-alert {
+      --background: rgba(18, 24, 38, 0.98);
+      --backdrop-opacity: 0.65;
+      --min-width: 280px;
+      --max-width: 360px;
+      --color: rgba(231, 238, 247, 0.95);
+      --button-color: var(--ion-color-primary);
+    }
+    ion-alert::part(title) {
+      color: rgba(231, 238, 247, 0.98);
+    }
+    ion-alert::part(message) {
+      color: rgba(231, 238, 247, 0.88);
+    }
     .muted { opacity: 0.75; }
     .bigNumber { font-size: 64px; font-weight: 800; line-height: 1; }
     .center { text-align: center; }
@@ -228,28 +244,6 @@
     .planCurrent {
       border-left: 3px solid var(--ion-color-primary);
       background: rgba(255,149,0,.08);
-    }
-
-    /* Higher-contrast Ion Alerts (default was too pale on dark theme) */
-    ion-alert {
-      --background: rgba(18, 24, 38, 0.98);
-      --color: var(--ion-text-color);
-      --backdrop-opacity: 0.55;
-      --button-color: var(--ion-color-primary);
-    }
-    ion-alert::part(wrapper) {
-      border: 1px solid rgba(34,48,71,.9);
-      border-radius: 18px;
-    }
-    ion-alert::part(message) {
-      color: var(--ion-text-color);
-      opacity: 0.9;
-    }
-    ion-alert::part(title) {
-      color: var(--ion-text-color);
-    }
-    ion-alert::part(button) {
-      font-weight: 800;
     }
 
     /* Mini test panel (hidden) */
