@@ -16,6 +16,23 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@ionic/core@7.8.6/css/ionic.bundle.css" />
 
   <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* prevent page scroll; only internal scrollers should scroll */
+      overscroll-behavior: none;
+    }
+
+    body {
+      position: fixed; /* reduces rubber-band on iOS Safari/PWA */
+      width: 100%;
+    }
+
+    ion-app {
+      height: 100%;
+    }
+
     :root {
       --ion-color-primary: #ff9500;
       --ion-color-primary-rgb: 255,149,0;
@@ -24,6 +41,12 @@
     }
     ion-content {
       --background: linear-gradient(180deg, #06080c 0%, #0b0f14 40%, #0b0f14 100%);
+    }
+
+    /* Apply overscroll containment to the actual scrolling element (helps on non-iOS, no harm on iOS) */
+    ion-content::part(scroll) {
+      overscroll-behavior: none;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Fix iOS alert readability: ion-alert uses scoped CSS (no shadow parts).
@@ -1691,6 +1714,24 @@
       await ensureDefined('ion-modal');
       await ensureDefined('ion-toast');
       await ensureDefined('ion-alert');
+
+      // Reduce iOS rubber-band: nudge the main scroll container away from edges.
+      // (iOS can still bounce inside the scroller, but this prevents the page itself from bouncing.)
+      try {
+        const mainContent = document.querySelector('ion-app > ion-content');
+        if (mainContent && typeof mainContent.getScrollElement === 'function') {
+          const scrollEl = await mainContent.getScrollElement();
+          if (scrollEl) {
+            scrollEl.addEventListener('touchstart', () => {
+              const top = scrollEl.scrollTop;
+              const max = scrollEl.scrollHeight - scrollEl.clientHeight;
+              if (max <= 0) return;
+              if (top <= 0) scrollEl.scrollTop = 1;
+              else if (top >= max) scrollEl.scrollTop = max - 1;
+            }, { passive: true });
+          }
+        }
+      } catch {}
 
       const settingsModal = $("settingsModal");
       const trainingModal = $("trainingModal");
