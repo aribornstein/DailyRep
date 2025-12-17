@@ -1002,13 +1002,39 @@
       planData.fullPlan.forEach((entry) => {
         const isCurrent = entry.day === planData.planDay;
         const item = document.createElement('ion-item');
+        item.lines = 'full';
+        item.detail = false;
+        item.button = true;
         if (isCurrent) item.classList.add('planCurrent');
-        item.innerHTML = `
-          <ion-label>
-            <div class="mono" style="font-weight:800">Day ${entry.day}${isCurrent ? ' • Current' : ''}</div>
-            <div class="muted mono">${entry.sets.join(' / ')}  (${entry.total} total)</div>
-          </ion-label>
+
+        item.addEventListener('click', () => {
+          // Avoid changing day mid-session; it can be confusing.
+          if (session && session.active) {
+            toast('End the current session before changing the day');
+            return;
+          }
+
+          const nextDay = setProgressDay(entry.day, settings.totalDays);
+          currentDate = isoToday();
+          renderWorkoutView();
+          renderHistoryView();
+          renderPlanList();
+          toast(`Set plan to Day ${nextDay}`);
+        });
+
+        const label = document.createElement('ion-label');
+        label.innerHTML = `
+          <div class="mono" style="font-weight:800">Day ${entry.day}${isCurrent ? ' • Current' : ''}</div>
+          <div class="muted mono">${entry.sets.join(' / ')}</div>
         `;
+        item.appendChild(label);
+
+        const badge = document.createElement('ion-badge');
+        badge.color = 'primary';
+        badge.slot = 'end';
+        badge.textContent = String(entry.total);
+        item.appendChild(badge);
+
         list.appendChild(item);
       });
     }
@@ -1339,7 +1365,8 @@
         $("tapHint").textContent = 'REST';
         $("tapMeta").textContent = 'Tap to skip rest';
       } else {
-        $("curCount").textContent = String(session.actual[i]);
+        const remaining = Math.max(0, (session.targets[i] || 0) - (session.actual[i] || 0));
+        $("curCount").textContent = String(remaining);
         $("tapHint").textContent = 'TAP TO COUNT';
         $("tapMeta").textContent = 'Tap to count reps. During rest, the timer shows here—tap to skip.';
       }
@@ -1455,7 +1482,8 @@
       const prev = session.actual[i];
       session.actual[i] = clampInt(session.actual[i] + delta, 0, 999);
       if (session.actual[i] > prev && delta > 0) playBeep();
-      $("curCount").textContent = String(session.actual[i]);
+      const remaining = Math.max(0, (session.targets[i] || 0) - (session.actual[i] || 0));
+      $("curCount").textContent = String(remaining);
       haptics(20);
       // lightweight render: only fully render when reaching target or correcting below
       if (session.actual[i] === session.targets[i]) {
