@@ -1316,7 +1316,9 @@
 
     function incMax(delta) {
       if (!maxSession.active) return;
+      const prev = maxSession.count;
       maxSession.count = clampInt(maxSession.count + delta, 0, 9999);
+      if (delta > 0 && maxSession.count > prev) playBeep();
       renderMaxUI();
       haptics(20);
     }
@@ -1488,7 +1490,6 @@
       $("closeMax").addEventListener('click', () => dismissOverlay(maxModal));
       $("finishMaxBtn").addEventListener('click', () => finishMaxTest());
       $("maxTapArea").addEventListener('pointerdown', (e) => { e.preventDefault(); incMax(1); });
-      $("maxTapArea").addEventListener('click', (e) => { e.preventDefault(); incMax(1); });
 
       $("viewPlanBtn").addEventListener('click', async () => {
         renderPlanList();
