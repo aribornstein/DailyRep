@@ -149,6 +149,12 @@
     /* Hide scrollbars for the strip on iOS */
     .trainingStrip::-webkit-scrollbar { display: none; }
 
+    /* Plan list highlight for current session */
+    .planCurrent {
+      border-left: 3px solid var(--ion-color-primary);
+      background: rgba(255,149,0,.08);
+    }
+
     /* Mini test panel (hidden) */
     #testLog { display:none; }
   </style>
@@ -215,50 +221,37 @@
           <ion-card-content>
             <div class="muted">Sessions left: <span id="sessionsLeft">—</span></div>
             <div class="mono muted" id="planPreview" style="margin-top:8px">Plan not available</div>
-            <ion-button expand="block" fill="outline" color="primary" id="viewPlanBtn" style="margin-top:12px">View full plan</ion-button>
-          </ion-card-content>
-        </ion-card>
+                <ion-button expand="block" fill="outline" color="primary" id="viewPlanBtn" style="margin-top:12px">View full plan</ion-button>
+            </ion-card-content>
+            </ion-card>
 
-        <ion-card class="cardDark">
-          <ion-card-header>
-            <ion-card-title>Log today</ion-card-title>
-            <ion-card-subtitle class="muted">Type sets, or run a session to fill them automatically</ion-card-subtitle>
-          </ion-card-header>
-          <ion-card-content>
-            <ion-item>
-              <ion-label position="stacked">Date</ion-label>
-              <input id="date" type="date" style="width:100%; background:transparent; color:inherit; border:none; padding:12px 0; font:inherit" />
-            </ion-item>
+            <ion-card class="cardDark">
+            <ion-card-header>
+                <ion-card-title>Today</ion-card-title>
+                <ion-card-subtitle class="muted">Session data is auto-saved</ion-card-subtitle>
+            </ion-card-header>
+            <ion-card-content>
+                <div class="muted" style="margin-bottom:8px">Last Completed Sets</div>
+                <div class="mono" id="setsDisplay">—</div>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+                <ion-chip id="doneChip" class="chipWarn"><ion-label>Done: —</ion-label></ion-chip>
+                <ion-chip class="chipWarn"><ion-label>Total: <span id="todayTotal">—</span></ion-label></ion-chip>
+                <ion-chip class="chipWarn"><ion-label>PR total: <span id="bestTotal">—</span></ion-label></ion-chip>
+                </div>
+            </ion-card-content>
+            </ion-card>
 
-            <ion-item>
-              <ion-label position="stacked">Sets (comma-separated)</ion-label>
-              <ion-input id="setsInput" inputmode="numeric" placeholder="20,18,18,16,16"></ion-input>
-            </ion-item>
-
-            <div style="display:flex; gap:10px; margin-top:12px;">
-              <ion-button expand="block" fill="outline" color="primary" id="fillTargetBtn" style="flex:1">Fill target</ion-button>
-              <ion-button expand="block" color="primary" id="saveBtn" style="flex:1">Save</ion-button>
+            <div class="stickyBottom">
+            <div style="display:flex; gap:10px;">
+                <ion-button expand="block" color="primary" id="startTrainingBtn" style="flex:1">
+                <ion-icon slot="start" name="fitness-outline"></ion-icon>
+                Start training
+                </ion-button>
+                <ion-button expand="block" fill="outline" color="primary" id="sessionBtn" style="flex:1">
+                <ion-icon slot="start" name="trophy-outline"></ion-icon>
+                Session / record
+                </ion-button>
             </div>
-
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
-              <ion-chip id="doneChip" class="chipWarn"><ion-label>Done: —</ion-label></ion-chip>
-              <ion-chip class="chipWarn"><ion-label>Total: <span id="todayTotal">—</span></ion-label></ion-chip>
-              <ion-chip class="chipWarn"><ion-label>PR total: <span id="bestTotal">—</span></ion-label></ion-chip>
-            </div>
-          </ion-card-content>
-        </ion-card>
-
-        <div class="stickyBottom">
-          <div style="display:flex; gap:10px;">
-            <ion-button expand="block" color="primary" id="startTrainingBtn" style="flex:1">
-              <ion-icon slot="start" name="fitness-outline"></ion-icon>
-              Start training
-            </ion-button>
-            <ion-button expand="block" fill="outline" color="primary" id="sessionBtn" style="flex:1">
-              <ion-icon slot="start" name="trophy-outline"></ion-icon>
-              Session / record
-            </ion-button>
-          </div>
         </div>
       </div>
 
@@ -281,32 +274,36 @@
         <ion-content>
           <ion-list inset="true">
             <ion-item>
-              <ion-label position="stacked">Max reps (one set)</ion-label>
+              <ion-label position="stacked">Starting Max reps (one set)</ion-label>
               <ion-input id="maxReps" type="number" min="1" value="30"></ion-input>
             </ion-item>
             <ion-item>
-              <ion-label position="stacked">Top set start %</ion-label>
-              <ion-input id="startPercent" type="number" min="0.3" max="0.95" step="0.05" value="0.70"></ion-input>
+              <ion-label position="stacked">Top set start % (fixed)</ion-label>
+              <ion-input id="startPercent" type="text" value="—" disabled></ion-input>
             </ion-item>
             <ion-item>
-              <ion-label position="stacked">Back-off drops (5 numbers)</ion-label>
-              <ion-input id="drops" value="0,2,2,4,4"></ion-input>
+              <ion-label position="stacked">Intensity profile (fixed)</ion-label>
+              <ion-input id="drops" value="85,80,75,70,65" disabled></ion-input>
             </ion-item>
             <ion-item>
               <ion-label position="stacked">Rest timer (seconds)</ion-label>
-              <ion-input id="rest" type="number" min="15" step="5" value="90"></ion-input>
+              <ion-input id="rest" type="number" min="30" step="5" value="90"></ion-input>
+            </ion-item>
+            <ion-item>
+              <ion-label>Beep on each rep</ion-label>
+              <ion-toggle id="beepToggle" checked="true"></ion-toggle>
             </ion-item>
             <ion-item>
               <ion-label position="stacked">Plan length (days)</ion-label>
               <ion-input id="planDays" type="number" min="1" max="365" value="100"></ion-input>
             </ion-item>
             <ion-item>
-              <ion-label position="stacked">Daily goal volume</ion-label>
+              <ion-label position="stacked">Goal max reps (single set)</ion-label>
               <ion-input id="goalVolume" type="number" min="1" max="1000" value="100"></ion-input>
             </ion-item>
             <ion-item>
               <ion-label position="stacked">Rounding</ion-label>
-              <ion-select id="rounding" value="down">
+              <ion-select id="rounding" value="nearest">
                 <ion-select-option value="down">Down</ion-select-option>
                 <ion-select-option value="nearest">Nearest</ion-select-option>
                 <ion-select-option value="up">Up</ion-select-option>
@@ -327,7 +324,7 @@
       <ion-modal id="planModal">
         <ion-header>
           <ion-toolbar color="dark">
-            <ion-title>Remaining plan</ion-title>
+            <ion-title>Full plan</ion-title>
             <ion-buttons slot="end">
               <ion-button id="closePlan" fill="clear">Close</ion-button>
             </ion-buttons>
@@ -335,7 +332,7 @@
         </ion-header>
         <ion-content>
           <ion-list inset="true" id="planList"></ion-list>
-          <div class="muted" style="padding: 0 16px 18px; font-size:12px" id="planModalHint">Projected sets include today through your day 100 target.</div>
+          <div class="muted" style="padding: 0 16px 18px; font-size:12px" id="planModalHint">Full 100-day single-set growth spine with fixed intensity profile.</div>
         </ion-content>
       </ion-modal>
 
@@ -376,15 +373,6 @@
 
             <div class="trainingBottom">
               <div class="bottomRow">
-                <ion-button class="smallBtn" fill="outline" color="primary" id="minusBtn">
-                  <ion-icon slot="start" name="remove-outline"></ion-icon>
-                  −1
-                </ion-button>
-                <ion-button class="smallBtn" color="primary" id="plusBtn">
-                  <ion-icon slot="start" name="add-outline"></ion-icon>
-                  +1
-                </ion-button>
-
                 <div class="restBadge" id="restBadge">
                   <ion-icon name="timer-outline"></ion-icon>
                   <span>Rest:</span>
@@ -491,6 +479,8 @@
     const KEY_START_DATE = "pu100_start_date_v4";
     const KEY_WORKOUTS = "pu100_workouts_v4";
     const KEY_MAX_SINGLE = "pu100_max_single_v1";
+    const KEY_PROGRESS_DAY = "pu100_progress_day_v1";
+    let audioCtx = null;
 
     const $ = (id) => document.getElementById(id);
 
@@ -499,6 +489,8 @@
       const tzOff = d.getTimezoneOffset() * 60000;
       return new Date(d.getTime() - tzOff).toISOString().slice(0, 10);
     }
+
+    let currentDate = isoToday();
 
     function clampInt(x, min, max) {
       return Math.max(min, Math.min(max, Math.trunc(x)));
@@ -554,49 +546,110 @@
       if (typeof el.dismiss === 'function') return el.dismiss();
     }
 
-    function generateTargetForDay(day, settings) {
+    function getDayPlan(day, settings) {
       const {
+        startMax,
         maxReps,
+        goalMax = 100,
         totalDays = 100,
-        topSetStartPercent,
         rounding,
-        backoffDrops,
-        maxRepsPerSet = 20
+        intensityProfile = [0.85, 0.80, 0.75, 0.70, 0.65]
       } = settings;
 
       const d = clampInt(day, 1, totalDays);
-      const startTopRaw = maxReps * topSetStartPercent;
-      const startTop = clampInt(roundReps(startTopRaw, rounding), 1, maxRepsPerSet);
-      const endTop = maxRepsPerSet;
-      const t = totalDays === 1 ? 1 : (d - 1) / (totalDays - 1);
-      const topRaw = startTop + t * (endTop - startTop);
-      const topSet = clampInt(roundReps(topRaw, rounding), 1, maxRepsPerSet);
+      const start = Number.isFinite(startMax) ? startMax : maxReps;
+      const safeStart = clampInt(start || 30, 1, goalMax || 100);
+      const safeGoal = clampInt(goalMax || 100, 1, 100000);
 
-      const sets = backoffDrops.map((drop) => clampInt(topSet - drop, 1, maxRepsPerSet));
+      const t = totalDays === 1 ? 1 : (d - 1) / (totalDays - 1);
+      const targetMaxRaw = safeStart + t * (safeGoal - safeStart);
+      const targetMax = clampInt(roundReps(targetMaxRaw, rounding || 'nearest'), 1, safeGoal);
+
+      const intensities = Array.isArray(intensityProfile) && intensityProfile.length === 5
+        ? intensityProfile
+        : [0.85, 0.80, 0.75, 0.70, 0.65];
+
+      const sets = intensities.map((pct) => {
+        const val = pct * targetMax;
+        return clampInt(roundReps(val, rounding || 'nearest'), 1, safeGoal);
+      });
+
+      // enforce non-increasing order if rounding caused bumps
+      for (let i = 1; i < sets.length; i += 1) {
+        if (sets[i] > sets[i - 1]) sets[i] = sets[i - 1];
+      }
+
       const total = sets.reduce((a, b) => a + b, 0);
 
-      return { day: d, topSet, sets, total };
+      return {
+        day: d,
+        targetMax,
+        sets,
+        total,
+        targetTotal: total,
+        restModel: {
+          base: settings.baseRestSeconds,
+          min: settings.minRestSeconds,
+          max: settings.maxRestSeconds
+        }
+      };
+    }
+
+    // Backwards-friendly alias
+    const generateTargetForDay = getDayPlan;
+
+    function getRestSeconds(setIndex, targetReps, actualReps, settings) {
+      const {
+        baseRestSeconds,
+        minRestSeconds,
+        maxRestSeconds
+      } = settings;
+
+      const delta = actualReps - targetReps;
+      let perfMultiplier = 1;
+      if (delta >= 3) perfMultiplier = 0.80;
+      else if (delta >= -2) perfMultiplier = 1.00;
+      else if (delta >= -4) perfMultiplier = 1.20;
+      else perfMultiplier = 1.40;
+
+      const posMultipliers = [0.90, 1.00, 1.05, 1.10, 1.15];
+      const posMultiplier = posMultipliers[clampInt(setIndex, 0, 4)] ?? 1;
+
+      const raw = (baseRestSeconds || 0) * perfMultiplier * posMultiplier;
+      const clamped = clampInt(Math.round(raw), minRestSeconds, maxRestSeconds);
+      return clamped;
     }
 
     function loadSettings() {
       const defaults = {
-        maxReps: 30,
+        startMax: 30,
+        goalMax: 100,
         totalDays: 100,
-        topSetStartPercent: 0.70,
-        rounding: "down",
-        backoffDrops: [0, 2, 2, 4, 4],
-        maxRepsPerSet: 20,
-        restSeconds: 90,
-        goalVolume: 100
+        rounding: "nearest",
+        intensityProfile: [0.85, 0.80, 0.75, 0.70, 0.65],
+        baseRestSeconds: 90,
+        minRestSeconds: 45,
+        maxRestSeconds: 240,
+        soundOn: true
       };
       const saved = localStorage.getItem(KEY_SETTINGS);
       if (!saved) return defaults;
       try {
         const obj = JSON.parse(saved);
+        const baseRestSeconds = Number.isFinite(obj.baseRestSeconds) ? obj.baseRestSeconds
+          : Number.isFinite(obj.restSeconds) ? obj.restSeconds
+          : defaults.baseRestSeconds;
         return {
           ...defaults,
           ...obj,
-          backoffDrops: Array.isArray(obj.backoffDrops) && obj.backoffDrops.length === 5 ? obj.backoffDrops : defaults.backoffDrops
+          startMax: Number.isFinite(obj.startMax) ? obj.startMax : Number.isFinite(obj.maxReps) ? obj.maxReps : defaults.startMax,
+          goalMax: Number.isFinite(obj.goalMax) ? obj.goalMax : defaults.goalMax,
+          intensityProfile: Array.isArray(obj.intensityProfile) && obj.intensityProfile.length === 5 ? obj.intensityProfile : defaults.intensityProfile,
+          baseRestSeconds,
+          restSeconds: baseRestSeconds,
+          minRestSeconds: Number.isFinite(obj.minRestSeconds) ? obj.minRestSeconds : defaults.minRestSeconds,
+          maxRestSeconds: Number.isFinite(obj.maxRestSeconds) ? obj.maxRestSeconds : defaults.maxRestSeconds,
+          soundOn: obj.soundOn !== false
         };
       } catch {
         return defaults;
@@ -613,6 +666,18 @@
 
     function setStartDate(iso) {
       localStorage.setItem(KEY_START_DATE, iso);
+    }
+
+    function loadProgressDay(totalDays = 100) {
+      const raw = Number(localStorage.getItem(KEY_PROGRESS_DAY));
+      const n = Number.isFinite(raw) ? raw : 1;
+      return clampInt(n, 1, totalDays);
+    }
+
+    function setProgressDay(day, totalDays = 100) {
+      const n = clampInt(day, 1, totalDays);
+      localStorage.setItem(KEY_PROGRESS_DAY, String(n));
+      return n;
     }
 
     function loadMaxSingle() {
@@ -669,17 +734,13 @@
     function renderWorkoutView() {
       const settings = loadSettings();
       const workouts = loadWorkouts();
-      const start = loadStartDate();
+      const dateForView = currentDate || isoToday();
 
-      const today = isoToday();
-      // Always auto-populate date to today if empty
-      if (!$("date").value) $("date").value = today;
-
-      const planDay = computePlanDay($("date").value, start, settings.totalDays);
+      const planDay = loadProgressDay(settings.totalDays);
       $("planDay").textContent = String(planDay);
 
       const planBadge = $("planBadge");
-      if (planBadge) planBadge.textContent = `${settings.backoffDrops.length}×${settings.maxRepsPerSet}`;
+      if (planBadge) planBadge.textContent = `Goal ${settings.goalMax || 100}`;
 
       const planSub = $("planSubText");
       if (planSub) planSub.textContent = `Sessions remaining to day ${settings.totalDays}`;
@@ -690,6 +751,11 @@
       const totalDays = clampInt(Number(settings.totalDays || 100), 1, 365);
       const sessionsLeft = Math.max(0, totalDays - planDay + 1);
       $("sessionsLeft").textContent = String(sessionsLeft);
+
+      const fullPlan = [];
+      for (let d = 1; d <= totalDays; d += 1) {
+        fullPlan.push(generateTargetForDay(d, settings));
+      }
 
       const remaining = [];
       if (sessionsLeft > 0) {
@@ -710,24 +776,25 @@
         }
       }
 
-      renderWorkoutView._planData = { sessionsLeft, remaining };
+      renderWorkoutView._planData = { sessionsLeft, remaining, fullPlan, planDay };
 
-      const goalVolume = clampInt(Number(settings.goalVolume || 100), 1, 100000);
-      const pct = Math.max(0, Math.min(100, Math.round((target.topSet / goalVolume) * 100)));
+      const goalMax = clampInt(Number(settings.goalMax || 100), 1, 100000);
+      const pct = Math.max(0, Math.min(100, Math.round((target.targetMax / goalMax) * 100)));
       $("volBar").value = pct / 100;
       $("volPct").textContent = pct + "%";
-      $("volGoal").textContent = String(goalVolume);
+      $("volGoal").textContent = String(goalMax);
 
-      const toGo = Math.max(0, goalVolume - target.topSet);
+      const toGo = Math.max(0, goalMax - target.targetMax);
       $("toGo").textContent = String(toGo);
 
-      const existing = workouts.find(w => w.date === $("date").value);
+      const existing = workouts.find(w => w.date === dateForView);
       if (existing) {
-        $("setsInput").value = existing.sets.join(",");
+        $("setsDisplay").textContent = existing.sets.join(" / ");
         $("todayTotal").textContent = String(existing.total);
         $("doneChip").innerHTML = '<ion-label>Done: Yes</ion-label>';
         $("doneChip").className = 'chipOk ion-color ion-color-success';
       } else {
+        $("setsDisplay").textContent = "—";
         $("todayTotal").textContent = "—";
         $("doneChip").innerHTML = '<ion-label>Done: No</ion-label>';
         $("doneChip").className = 'chipWarn';
@@ -761,8 +828,7 @@
         item.button = true;
         item.detail = true;
         item.addEventListener('click', () => {
-          $("date").value = w.date;
-          $("setsInput").value = w.sets.join(',');
+          currentDate = w.date;
           $("tabSeg").value = 'workout';
           switchTab('workout');
           renderWorkoutView();
@@ -801,24 +867,25 @@
       if (!list) return;
       list.innerHTML = "";
 
-      const planData = renderWorkoutView._planData || { sessionsLeft: 0, remaining: [] };
+      const planData = renderWorkoutView._planData || { sessionsLeft: 0, remaining: [], fullPlan: [], planDay: 1 };
       const settings = loadSettings();
       const hint = $("planModalHint");
-      if (hint) hint.textContent = `Projected sets include today through your day ${settings.totalDays} target.`;
-      if (!planData.remaining.length) {
+      if (hint) hint.textContent = `Full plan (days 1–${settings.totalDays}). Current day is highlighted.`;
+      if (!planData.fullPlan.length) {
         const item = document.createElement('ion-item');
-        item.innerHTML = '<ion-label class="muted">No sessions remaining.</ion-label>';
+        item.innerHTML = '<ion-label class="muted">No plan available.</ion-label>';
         list.appendChild(item);
         return;
       }
 
-      planData.remaining.forEach((entry, idx) => {
-        const labelTop = idx === 0 ? 'Next up' : `Day ${entry.day}`;
+      planData.fullPlan.forEach((entry) => {
+        const isCurrent = entry.day === planData.planDay;
         const item = document.createElement('ion-item');
+        if (isCurrent) item.classList.add('planCurrent');
         item.innerHTML = `
           <ion-label>
-            <div class="mono" style="font-weight:800">${labelTop}</div>
-            <div class="muted mono">Day ${entry.day}: ${entry.sets.join(' / ')}  (${entry.total} total)</div>
+            <div class="mono" style="font-weight:800">Day ${entry.day}${isCurrent ? ' • Current' : ''}</div>
+            <div class="muted mono">${entry.sets.join(' / ')}  (${entry.total} total)</div>
           </ion-label>
         `;
         list.appendChild(item);
@@ -882,6 +949,33 @@
       try { navigator.vibrate?.(ms); } catch {}
     }
 
+    function getAudioCtx() {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        return audioCtx;
+      } catch {
+        return null;
+      }
+    }
+
+    function playBeep() {
+      const s = loadSettings();
+      if (s.soundOn === false) return;
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.12);
+    }
+
     function renderSessionUI() {
       const i = session.curIndex;
       $("curSet").textContent = String(i + 1);
@@ -906,11 +1000,19 @@
       $("tapArea").style.opacity = session.resting ? '0.55' : '1';
     }
 
-    function startRest() {
+    function restSecondsForSet(setIndex) {
+      const settings = loadSettings();
+      const targetReps = session.targets[setIndex] || 0;
+      const actualReps = session.actual[setIndex] || 0;
+      return getRestSeconds(setIndex, targetReps, actualReps, settings);
+    }
+
+    function startRest(seconds) {
       stopRestTimer();
       const s = loadSettings();
+      const base = Number.isFinite(seconds) ? seconds : s.baseRestSeconds || 90;
       session.resting = true;
-      session.restRemaining = clampInt(Number(s.restSeconds || 90), 10, 3600);
+      session.restRemaining = clampInt(Number(base || s.baseRestSeconds || 90), s.minRestSeconds, s.maxRestSeconds);
       renderSessionUI();
       haptics(60);
 
@@ -949,17 +1051,21 @@
         return;
       }
 
+      const restSeconds = restSecondsForSet(i);
+
       // Advance to next set and start rest
       session.curIndex += 1;
       renderSessionUI();
-      startRest();
+      startRest(restSeconds);
     }
 
     function incRep(delta) {
       if (!session.active) return;
       if (session.resting) return;
       const i = session.curIndex;
+      const prev = session.actual[i];
       session.actual[i] = clampInt(session.actual[i] + delta, 0, 999);
+      if (session.actual[i] > prev && delta > 0) playBeep();
       $("curCount").textContent = String(session.actual[i]);
       haptics(20);
       // lightweight render: only fully render when reaching target or correcting below
@@ -976,24 +1082,26 @@
     function finishSetManual() {
       if (!session.active) return;
       if (session.resting) return;
+      const completedIndex = session.curIndex;
       // Treat current count as final and advance
       if (session.curIndex >= 4) {
         finishSession();
         return;
       }
+      const restSeconds = restSecondsForSet(completedIndex);
       session.curIndex += 1;
       renderSessionUI();
-      startRest();
+      startRest(restSeconds);
     }
 
     function startSession() {
       const settings = loadSettings();
-      const start = loadStartDate();
-      const date = $("date").value || isoToday();
+      const date = currentDate || isoToday();
+      currentDate = date;
 
       session.active = true;
       session.date = date;
-      session.day = computePlanDay(date, start, settings.totalDays);
+      session.day = loadProgressDay(settings.totalDays);
 
       const target = generateTargetForDay(session.day, settings);
       session.targets = [...target.sets];
@@ -1010,14 +1118,39 @@
       stopRestTimer();
       session.resting = false;
 
-      // Fill the workout screen sets input (user can still edit before saving)
-      $("setsInput").value = session.actual.join(',');
-      $("date").value = session.date || isoToday();
+      const date = session.date || currentDate || isoToday();
+      const settings = loadSettings();
+      const day = loadProgressDay(settings.totalDays);
+      const sets = [...session.actual];
+      const total = sets.reduce((a, b) => a + b, 0);
+
+      const targetPlan = generateTargetForDay(day, settings);
+      const success = sets.length === targetPlan.sets.length && sets.every((rep, idx) => rep >= (targetPlan.sets[idx] || 0));
+
+      // Persist workout automatically
+      const w = { date, day, sets, total };
+      const workouts = upsertWorkout(loadWorkouts(), w);
+      saveWorkouts(workouts);
+
+      // Advance progression only if all targets met
+      if (success) {
+        setProgressDay(Math.min(day + 1, settings.totalDays), settings.totalDays);
+      }
+
+      // Update UI
+      currentDate = date;
       renderWorkoutView();
+      renderHistoryView();
+
+      // Reflect completion badges immediately
+      $("setsDisplay").textContent = sets.join(" / ");
+      $("todayTotal").textContent = String(total);
+      $("doneChip").innerHTML = '<ion-label>Done: Yes</ion-label>';
+      $("doneChip").className = 'chipOk ion-color ion-color-success';
 
       session.active = false;
 
-      toast('Session complete — review and tap Save');
+      toast('Session saved');
       dismissOverlay(window._trainingModal);
       haptics(120);
     }
@@ -1059,16 +1192,10 @@
     function runSelfTests() {
       const settings = loadSettings();
 
-      const s1 = { ...settings, maxReps: 30, topSetStartPercent: 0.7, rounding: 'down', backoffDrops: [0,2,2,4,4] };
+      const s1 = { ...settings, startMax: 30, goalMax: 100, rounding: 'nearest' };
       const t1 = generateTargetForDay(1, s1);
-      const expected1 = [20,18,18,16,16];
-      if (t1.sets.join(',') !== expected1.join(',')) {
-        console.warn('Self-test failed: day1 sets', t1.sets, 'expected', expected1);
-      }
-
-      const p = parseCSVNums('20, 18,18,16,16');
-      if (p.length !== 5 || p[0] !== 20 || p[4] !== 16) {
-        console.warn('Self-test failed: parseCSVNums', p);
+      if (t1.sets.length !== 5 || t1.sets[0] < t1.sets[1]) {
+        console.warn('Self-test failed: monotonic sets', t1.sets);
       }
 
       // Session advance test
@@ -1100,16 +1227,19 @@
 
       await Promise.all([ready(settingsModal), ready(trainingModal), ready(recordModal), ready(planModal), ready(maxModal)]);
 
-      // Always auto-populate date at startup
-      $("date").value = isoToday();
+      // Always track today's date at startup
+      currentDate = isoToday();
 
       const s = loadSettings();
-      $("maxReps").value = s.maxReps;
-      $("startPercent").value = s.topSetStartPercent;
-      $("drops").value = s.backoffDrops.join(',');
-      $("rest").value = s.restSeconds;
+      $("maxReps").value = s.startMax ?? s.maxReps;
+      $("startPercent").value = '—';
+      $("startPercent").disabled = true;
+      $("drops").value = '85,80,75,70,65';
+      $("drops").disabled = true;
+      $("rest").value = s.baseRestSeconds;
+      $("beepToggle").checked = s.soundOn !== false;
       $("planDays").value = s.totalDays;
-      $("goalVolume").value = s.goalVolume;
+      $("goalVolume").value = s.goalMax;
       $("rounding").value = s.rounding;
 
       runSelfTests();
@@ -1123,8 +1253,7 @@
 
       // Start training: opens full session UI
       $("startTrainingBtn").addEventListener('click', async () => {
-        // Ensure date is populated
-        if (!$("date").value) $("date").value = isoToday();
+        if (!currentDate) currentDate = isoToday();
         startSession();
         await presentOverlay(trainingModal);
       });
@@ -1162,12 +1291,8 @@
         // Auto-advance if above target too
         maybeAutoAdvance();
       };
-      // pointerdown for immediacy; also click as fallback
+      // pointerdown for immediacy; avoid double-fire by skipping click
       tapArea.addEventListener('pointerdown', tapHandler);
-      tapArea.addEventListener('click', tapHandler);
-
-      $("plusBtn").addEventListener('click', () => { incRep(1); maybeAutoAdvance(); });
-      $("minusBtn").addEventListener('click', () => incRep(-1));
 
       $("skipRestBtn").addEventListener('click', skipRest);
       $("finishSetBtn").addEventListener('click', finishSetManual);
@@ -1177,7 +1302,7 @@
         const best = loadWorkouts().reduce((m, w) => Math.max(m, w.total || 0), 0);
         $("prNumber").textContent = best ? String(best) : "—";
         const sPlan = loadSettings();
-        $("prGoalBadge").textContent = String(sPlan.goalVolume || 100);
+        $("prGoalBadge").textContent = String(sPlan.goalMax || 100);
         $("maxBest").textContent = String(loadMaxSingle() || "—");
         await presentOverlay(recordModal);
       });
@@ -1200,61 +1325,33 @@
       });
       $("closePlan").addEventListener('click', () => dismissOverlay(planModal));
 
-      // Date change
-      $("date").addEventListener('change', () => renderWorkoutView());
-
-      // Fill target
-      $("fillTargetBtn").addEventListener('click', () => {
-        const t = renderWorkoutView._target;
-        if (!t) return;
-        $("setsInput").value = t.sets.join(',');
-        toast('Filled target');
-      });
-
-      // Save workout
-      $("saveBtn").addEventListener('click', () => {
-        const date = $("date").value || isoToday();
-        const start = loadStartDate();
-        const settings = loadSettings();
-        const day = computePlanDay(date, start, settings.totalDays);
-        const sets = parseCSVNums($("setsInput").value);
-        if (sets.length !== 5) return toast('Enter exactly 5 numbers');
-        const total = sets.reduce((a, b) => a + b, 0);
-        const w = { date, day, sets, total };
-        const workouts = upsertWorkout(loadWorkouts(), w);
-        saveWorkouts(workouts);
-        toast('Saved');
-        renderWorkoutView();
-        renderHistoryView();
-      });
-
       // Save settings
       $("saveSettingsBtn").addEventListener('click', () => {
-        const maxReps = Number($("maxReps").value);
-        const topSetStartPercent = Number($("startPercent").value);
-        const drops = parseCSVNums($("drops").value).slice(0, 5);
-        const restSeconds = Number($("rest").value);
+        const startMax = Number($("maxReps").value);
+        const baseRestSeconds = Number($("rest").value);
         const totalDays = Number($("planDays").value);
-        const goalVolume = Number($("goalVolume").value);
+        const goalMax = Number($("goalVolume").value);
         const rounding = $("rounding").value;
+        const soundOn = Boolean($("beepToggle").checked);
 
-        if (!Number.isFinite(maxReps) || maxReps < 1) return toast('maxReps must be >= 1');
-        if (!Number.isFinite(topSetStartPercent) || topSetStartPercent <= 0 || topSetStartPercent > 1) return toast('start % must be between 0 and 1');
-        if (drops.length !== 5) return toast('Drops must have 5 numbers');
-        if (!Number.isFinite(restSeconds) || restSeconds < 10) return toast('Rest seconds must be >= 10');
+        if (!Number.isFinite(startMax) || startMax < 1) return toast('maxReps must be >= 1');
+        if (!Number.isFinite(baseRestSeconds) || baseRestSeconds < 10) return toast('Rest seconds must be >= 10');
         if (!Number.isFinite(totalDays) || totalDays < 1 || totalDays > 365) return toast('Plan days must be 1-365');
-        if (!Number.isFinite(goalVolume) || goalVolume < 1 || goalVolume > 100000) return toast('Goal volume must be 1-100000');
+        if (!Number.isFinite(goalMax) || goalMax < 1 || goalMax > 100000) return toast('Goal max must be 1-100000');
 
         const cur = loadSettings();
         saveSettings({
           ...cur,
-          maxReps,
-          topSetStartPercent,
-          backoffDrops: drops,
-          restSeconds,
+          startMax,
+          maxReps: startMax,
+          goalMax,
+          intensityProfile: [0.85, 0.80, 0.75, 0.70, 0.65],
+          baseRestSeconds,
+          restSeconds: baseRestSeconds,
           totalDays,
-          goalVolume,
-          rounding
+          goalMax,
+          rounding,
+          soundOn
         });
         toast('Settings saved');
         renderWorkoutView();
@@ -1264,7 +1361,8 @@
       // Reset plan
       $("startTodayBtn").addEventListener('click', () => {
         setStartDate(isoToday());
-        $("date").value = isoToday();
+        currentDate = isoToday();
+        setProgressDay(1, loadSettings().totalDays);
         toast('Plan reset to today (Day 1)');
         renderWorkoutView();
         renderHistoryView();
@@ -1328,18 +1426,20 @@
               localStorage.removeItem(KEY_START_DATE);
               localStorage.removeItem(KEY_WORKOUTS);
               localStorage.removeItem(KEY_MAX_SINGLE);
+              localStorage.removeItem(KEY_PROGRESS_DAY);
               toast('Wiped');
 
               const s2 = loadSettings();
-              $("maxReps").value = s2.maxReps;
-              $("startPercent").value = s2.topSetStartPercent;
-              $("drops").value = s2.backoffDrops.join(',');
-              $("rest").value = s2.restSeconds;
+              $("maxReps").value = s2.startMax ?? s2.maxReps;
+              $("startPercent").value = '—';
+              $("drops").value = '85,80,75,70,65';
+              $("rest").value = s2.baseRestSeconds;
+              $("beepToggle").checked = s2.soundOn !== false;
               $("planDays").value = s2.totalDays;
-              $("goalVolume").value = s2.goalVolume;
+              $("goalVolume").value = s2.goalMax;
               $("rounding").value = s2.rounding;
-              $("setsInput").value = '';
-              $("date").value = isoToday();
+              currentDate = isoToday();
+              setProgressDay(1, s2.totalDays);
               $("maxBest").textContent = '—';
 
               renderWorkoutView();
