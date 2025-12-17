@@ -158,6 +158,10 @@
       overflow: hidden;
       isolation: isolate;
       transition: --swipe-progress 80ms linear;
+      touch-action: pan-y; /* allow vertical scroll, capture horizontal swipe */
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
     }
 
     /* Hide scrollbars for the strip on iOS */
@@ -509,6 +513,11 @@
     }
     function primeBeep() {
       if (beepPrimed) return;
+      // Respect the toggle immediately, even before saving settings
+      const toggle = $("beepToggle");
+      if (toggle && toggle.checked === false) return;
+      const s = loadSettings();
+      if (s.soundOn === false) return;
       try {
         const el = getBeepEl();
         // Prime during a user gesture: play muted very briefly, then pause.
@@ -1085,6 +1094,7 @@
       let startX = 0;
       let startY = 0;
       let tracking = false;
+      let activePointerId = null;
       const threshold = 110; // require a deliberate horizontal swipe
       const restraint = 70;  // allow small vertical drift only
 
@@ -1092,42 +1102,103 @@
         if (typeof onProgress === 'function') onProgress(Math.max(0, Math.min(1, p)));
       };
 
-      el.addEventListener('pointerdown', (e) => {
-        startX = e.clientX;
-        startY = e.clientY;
-        tracking = true;
-        report(0);
-      });
-
-      el.addEventListener('pointermove', (e) => {
-        if (!tracking) return;
-        const dy = Math.abs(e.clientY - startY);
-        if (dy > restraint) {
-          tracking = false;
-          report(0);
-          return;
-        }
-        const dx = e.clientX - startX;
-        report(dx > 0 ? dx / threshold : 0);
-      });
-
-      el.addEventListener('pointerup', (e) => {
-        const dx = e.clientX - startX;
-        const dy = Math.abs(e.clientY - startY);
-        if (tracking && dx >= threshold && dy <= restraint) {
-          report(1);
-          onSwipe();
-          setTimeout(() => report(0), 120);
-        } else {
-          report(0);
-        }
+      const stop = () => {
         tracking = false;
-      });
+        activePointerId = null;
+        report(0);
+      };
 
-      const stop = () => { tracking = false; report(0); };
-      el.addEventListener('pointercancel', stop);
-      el.addEventListener('pointerleave', stop);
-      el.addEventListener('click', (e) => e.preventDefault());
+      if ('PointerEvent' in window) {
+        el.addEventListener('pointerdown', (e) => {
+          try { e.preventDefault(); } catch {}
+          activePointerId = e.pointerId;
+          startX = e.clientX;
+          startY = e.clientY;
+          tracking = true;
+          report(0);
+          try { el.setPointerCapture?.(activePointerId); } catch {}
+        }, { passive: false });
+
+        el.addEventListener('pointermove', (e) => {
+          if (!tracking) return;
+          if (activePointerId != null && e.pointerId !== activePointerId) return;
+          try { e.preventDefault(); } catch {}
+          const dy = Math.abs(e.clientY - startY);
+          if (dy > restraint) {
+            stop();
+            return;
+          }
+          const dx = e.clientX - startX;
+          report(dx > 0 ? dx / threshold : 0);
+        }, { passive: false });
+
+        el.addEventListener('pointerup', (e) => {
+          if (activePointerId != null && e.pointerId !== activePointerId) return;
+          try { e.preventDefault(); } catch {}
+          const dx = e.clientX - startX;
+          const dy = Math.abs(e.clientY - startY);
+          if (tracking && dx >= threshold && dy <= restraint) {
+            report(1);
+            onSwipe();
+            setTimeout(() => report(0), 120);
+          } else {
+            report(0);
+          }
+          tracking = false;
+          try { el.releasePointerCapture?.(e.pointerId); } catch {}
+          activePointerId = null;
+        }, { passive: false });
+
+        el.addEventListener('pointercancel', stop);
+      } else {
+        // Fallback for older Safari: touch events
+        el.addEventListener('touchstart', (e) => {
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          tracking = true;
+          startX = t.clientX;
+          startY = t.clientY;
+          report(0);
+          try { e.preventDefault(); } catch {}
+        }, { passive: false });
+
+        el.addEventListener('touchmove', (e) => {
+          if (!tracking) return;
+          const t = e.touches && e.touches[0];
+          if (!t) return;
+          try { e.preventDefault(); } catch {}
+          const dy = Math.abs(t.clientY - startY);
+          if (dy > restraint) {
+            stop();
+            return;
+          }
+          const dx = t.clientX - startX;
+          report(dx > 0 ? dx / threshold : 0);
+        }, { passive: false });
+
+        el.addEventListener('touchend', (e) => {
+          const t = (e.changedTouches && e.changedTouches[0]) || null;
+          if (!t) { stop(); return; }
+          try { e.preventDefault(); } catch {}
+          const dx = t.clientX - startX;
+          const dy = Math.abs(t.clientY - startY);
+          if (tracking && dx >= threshold && dy <= restraint) {
+            report(1);
+            onSwipe();
+            setTimeout(() => report(0), 120);
+          } else {
+            report(0);
+          }
+          tracking = false;
+        }, { passive: false });
+
+        el.addEventListener('touchcancel', stop);
+      }
+
+      // Avoid accidental click activation
+      el.addEventListener('click', (e) => {
+        try { e.preventDefault(); } catch {}
+      });
     }
 
     function getAudioCtx() {
@@ -1166,6 +1237,9 @@
     function playBeep() {
       const s = loadSettings();
       if (s.soundOn === false) return;
+      // Respect the toggle immediately, even if user hasn't pressed “Save settings” yet.
+      const toggle = $("beepToggle");
+      if (toggle && toggle.checked === false) return;
 
       // Try HTMLMediaElement beep first (best chance to bypass iOS Silent)
       try {
