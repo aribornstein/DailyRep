@@ -1134,9 +1134,10 @@
     function playBeep() {
       const s = loadSettings();
       if (s.soundOn === false) return;
+      if (!audioUnlocked) unlockAudioOnce();
       const ctx = getAudioCtx();
       if (!ctx || ctx.state !== 'running') {
-        haptics(30); // fallback for silent/muted scenarios (iOS hardware mute)
+        haptics(40); // fallback for silent/muted scenarios (iOS hardware mute)
         return;
       }
       const now = ctx.currentTime;
@@ -1144,13 +1145,13 @@
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, now);
-      gain.gain.setValueAtTime(0.09, now);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
       osc.connect(gain).connect(ctx.destination);
       osc.start(now);
-      osc.stop(now + 0.12);
+      osc.stop(now + 0.16);
       // light haptic alongside audio for better feedback on muted devices
-      haptics(10);
+      haptics(12);
     }
 
     function renderSessionUI() {
