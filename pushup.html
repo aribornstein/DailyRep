@@ -1074,13 +1074,36 @@
 
     function getAudioCtx() {
       try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         if (audioCtx.state === 'suspended') audioCtx.resume();
         return audioCtx;
       } catch {
         return null;
       }
     }
+
+    // Proactively unlock audio on first user interaction (iOS silent switch work-around)
+    let audioUnlocked = false;
+    function unlockAudioOnce() {
+      if (audioUnlocked) return;
+      const ctx = getAudioCtx();
+      if (!ctx) return;
+      Promise.resolve(ctx.resume?.()).then(() => {
+        if (ctx.state !== 'running') return;
+        audioUnlocked = true;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0.0001; // inaudible priming pulse
+        osc.frequency.value = 440;
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.02);
+      }).catch(() => {});
+    }
+    ['pointerdown', 'touchstart', 'mousedown'].forEach((ev) => {
+      window.addEventListener(ev, unlockAudioOnce, { once: true, passive: true });
+    });
+    window.addEventListener('keydown', unlockAudioOnce, { once: true });
 
     function playBeep() {
       const s = loadSettings();
