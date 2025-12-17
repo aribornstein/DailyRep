@@ -137,6 +137,24 @@
       --border-radius: 14px;
     }
 
+    /* Live swipe progress cue on Finish button */
+    .swipeBtn {
+      --swipe-progress: 0;
+      --color: #fff;
+      --base-bg: #0b1220;
+      --fill-bg: #ff9500;
+      --background: linear-gradient(90deg,
+        rgba(255,149,0,0.9) 0%,
+        rgba(255,149,0,0.9) calc(var(--swipe-progress) * 1%),
+        rgba(11,18,32,0.9) calc(var(--swipe-progress) * 1%),
+        rgba(11,18,32,0.9) 100%);
+      --background-hover: var(--background);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      transition: --swipe-progress 80ms linear;
+    }
+
     /* Hide scrollbars for the strip on iOS */
     .trainingStrip::-webkit-scrollbar { display: none; }
 
@@ -200,7 +218,6 @@
               <ion-label class="muted">Training progress</ion-label>
               <ion-progress-bar id="volBar" value="0" color="primary"></ion-progress-bar>
             </ion-item>
-            <div class="muted" style="font-size:12px; margin-top:6px">Target volume: <span id="volPct">—</span> of <span id="volGoal">—</span></div>
           </ion-card-content>
         </ion-card>
 
@@ -364,12 +381,9 @@
 
             <div class="trainingBottom">
               <div class="bottomRow">
-                <ion-button class="smallBtn" fill="outline" color="primary" id="finishSetBtn">
+                <ion-button class="smallBtn swipeBtn" fill="solid" color="primary" id="finishSetBtn">
                   Swipe right to finish set.
                 </ion-button>
-              </div>
-              <div class="muted" style="font-size:12px; margin-top:10px">
-                Auto-rest starts when you hit the target. Swipe right on Finish to advance manually. When all 5 sets are done, we’ll fill the Workout screen for you.
               </div>
             </div>
           </div>
@@ -430,14 +444,6 @@
 
             <div class="trainingBottom">
               <div class="bottomRow">
-                <ion-button class="smallBtn" fill="outline" color="primary" id="minusMaxBtn">
-                  <ion-icon slot="start" name="remove-outline"></ion-icon>
-                  −1
-                </ion-button>
-                <ion-button class="smallBtn" color="primary" id="plusMaxBtn">
-                  <ion-icon slot="start" name="add-outline"></ion-icon>
-                  +1
-                </ion-button>
                 <ion-button class="smallBtn" fill="outline" color="primary" id="finishMaxBtn" style="margin-left:auto">
                   Save / finish
                 </ion-button>
@@ -462,6 +468,25 @@
     const KEY_WORKOUTS = "pu100_workouts_v4";
     const KEY_MAX_SINGLE = "pu100_max_single_v1";
     const KEY_PROGRESS_DAY = "pu100_progress_day_v1";
+    const MOTIVATION_LINES = [
+      "You showed up. That's the win.",
+      "Stronger than yesterday.",
+      "Progress beats perfection.",
+      "Reps done. Confidence earned.",
+      "Discipline just paid interest.",
+      "One step closer to 100.",
+      "You didn't quit — that matters.",
+      "This is how consistency looks.",
+      "Your future self approves.",
+      "Hard work logged.",
+      "Another brick in the wall.",
+      "Effort compounds.",
+      "You're building something.",
+      "Same goal. Stronger body.",
+      "Done is powerful.",
+      "The strongest oak was once a little nut that held its ground.",
+      "Winners never quit and quitters never win."
+    ];
     let audioCtx = null;
 
     const $ = (id) => document.getElementById(id);
@@ -763,8 +788,10 @@
       const goalMax = clampInt(Number(settings.goalMax || 100), 1, 100000);
       const pct = Math.max(0, Math.min(100, Math.round((target.targetMax / goalMax) * 100)));
       $("volBar").value = pct / 100;
-      $("volPct").textContent = pct + "%";
-      $("volGoal").textContent = String(goalMax);
+      const volPctEl = $("volPct");
+      const volGoalEl = $("volGoal");
+      if (volPctEl) volPctEl.textContent = pct + "%";
+      if (volGoalEl) volGoalEl.textContent = String(goalMax);
 
       const toGo = Math.max(0, goalMax - target.targetMax);
       $("toGo").textContent = String(toGo);
@@ -900,7 +927,9 @@
       curIndex: 0,
       resting: false,
       restRemaining: 0,
-      restTimer: null
+      restTimer: null,
+      lastRestSpoken: null,
+      speakLocked: false
     };
 
     const maxSession = {
@@ -931,32 +960,101 @@
       try { navigator.vibrate?.(ms); } catch {}
     }
 
-    function attachSwipeRight(el, onSwipe) {
+    function stopSpeech() {
+      try { window.speechSynthesis?.cancel(); } catch {}
+      session.speakLocked = false;
+    }
+
+    function speak(text) {
+      try {
+        const synth = window.speechSynthesis;
+        if (!synth || !text) return;
+        synth.cancel();
+        const u = new SpeechSynthesisUtterance(String(text));
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        u.volume = 1.0;
+        synth.speak(u);
+      } catch {}
+    }
+
+    function maybeSpeakFinalCountdown() {
+      if (!session.resting) return;
+      if (session.restRemaining <= 5 && session.restRemaining > 0) {
+        if (session.speakLocked) return;
+        if (session.lastRestSpoken !== session.restRemaining) {
+          // Lead with a cue when entering the final 5 seconds
+          if ((session.lastRestSpoken === null || session.lastRestSpoken > 5) && session.restRemaining === 5) {
+            session.speakLocked = true;
+            try {
+              const synth = window.speechSynthesis;
+              if (synth) {
+                synth.cancel();
+                const u = new SpeechSynthesisUtterance('Get ready for the next set in 5');
+                u.rate = 1.0;
+                u.pitch = 1.0;
+                u.volume = 1.0;
+                u.onend = () => { session.speakLocked = false; };
+                synth.speak(u);
+              } else {
+                session.speakLocked = false;
+              }
+            } catch {
+              session.speakLocked = false;
+            }
+          } else {
+            speak(session.restRemaining);
+          }
+          session.lastRestSpoken = session.restRemaining;
+        }
+      }
+    }
+
+    function attachSwipeRight(el, onSwipe, onProgress) {
       if (!el || typeof onSwipe !== 'function') return;
       let startX = 0;
       let startY = 0;
-      let swiping = false;
-      const threshold = 70;
-      const restraint = 60;
+      let tracking = false;
+      const threshold = 110; // require a deliberate horizontal swipe
+      const restraint = 70;  // allow small vertical drift only
+
+      const report = (p) => {
+        if (typeof onProgress === 'function') onProgress(Math.max(0, Math.min(1, p)));
+      };
 
       el.addEventListener('pointerdown', (e) => {
         startX = e.clientX;
         startY = e.clientY;
-        swiping = true;
+        tracking = true;
+        report(0);
       });
 
       el.addEventListener('pointermove', (e) => {
-        if (!swiping) return;
-        const dx = e.clientX - startX;
+        if (!tracking) return;
         const dy = Math.abs(e.clientY - startY);
-        if (dx > threshold && dy < restraint) {
-          swiping = false;
-          onSwipe();
+        if (dy > restraint) {
+          tracking = false;
+          report(0);
+          return;
         }
+        const dx = e.clientX - startX;
+        report(dx > 0 ? dx / threshold : 0);
       });
 
-      const stop = () => { swiping = false; };
-      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointerup', (e) => {
+        const dx = e.clientX - startX;
+        const dy = Math.abs(e.clientY - startY);
+        if (tracking && dx >= threshold && dy <= restraint) {
+          report(1);
+          onSwipe();
+          setTimeout(() => report(0), 120);
+        } else {
+          report(0);
+        }
+        tracking = false;
+      });
+
+      const stop = () => { tracking = false; report(0); };
       el.addEventListener('pointercancel', stop);
       el.addEventListener('pointerleave', stop);
       el.addEventListener('click', (e) => e.preventDefault());
@@ -976,7 +1074,10 @@
       const s = loadSettings();
       if (s.soundOn === false) return;
       const ctx = getAudioCtx();
-      if (!ctx) return;
+      if (!ctx || ctx.state !== 'running') {
+        haptics(30); // fallback for silent/muted scenarios (iOS hardware mute)
+        return;
+      }
       const now = ctx.currentTime;
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -987,6 +1088,8 @@
       osc.connect(gain).connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.12);
+      // light haptic alongside audio for better feedback on muted devices
+      haptics(10);
     }
 
     function renderSessionUI() {
@@ -1034,17 +1137,28 @@
       const base = Number.isFinite(seconds) ? seconds : s.baseRestSeconds || 90;
       session.resting = true;
       session.restRemaining = clampInt(Number(base || s.baseRestSeconds || 90), s.minRestSeconds, s.maxRestSeconds);
+      session.lastRestSpoken = null;
+      session.speakLocked = false;
+      stopSpeech();
       renderSessionUI();
       haptics(60);
+      maybeSpeakFinalCountdown();
 
       session.restTimer = setInterval(() => {
+        if (session.speakLocked) {
+          setRestUI();
+          return;
+        }
         session.restRemaining -= 1;
+        maybeSpeakFinalCountdown();
         if (session.restRemaining <= 0) {
           stopRestTimer();
           session.resting = false;
           session.restRemaining = 0;
+          session.lastRestSpoken = null;
+          session.speakLocked = false;
+          stopSpeech();
           renderSessionUI();
-          toast('Go!');
           haptics(120);
           return;
         }
@@ -1053,9 +1167,22 @@
     }
 
     function skipRest() {
+      if (!session.resting) return;
+      if (session.restRemaining > 5) {
+        session.restRemaining = 5;
+        session.lastRestSpoken = null;
+        session.speakLocked = false;
+        renderSessionUI();
+        maybeSpeakFinalCountdown();
+        haptics(60);
+        return;
+      }
       stopRestTimer();
       session.resting = false;
       session.restRemaining = 0;
+      session.lastRestSpoken = null;
+      session.speakLocked = false;
+      stopSpeech();
       renderSessionUI();
       toast('Rest skipped');
     }
@@ -1172,6 +1299,10 @@
       session.active = false;
 
       toast('Session saved');
+      try {
+        const line = MOTIVATION_LINES[Math.floor(Math.random() * MOTIVATION_LINES.length)] || '';
+        if (line) speak(line);
+      } catch {}
       dismissOverlay(window._trainingModal);
       haptics(120);
     }
@@ -1319,10 +1450,25 @@
       // pointerdown for immediacy; avoid double-fire by skipping click
       tapArea.addEventListener('pointerdown', tapHandler);
 
-      attachSwipeRight($("finishSetBtn"), () => {
+      const finishBtn = $("finishSetBtn");
+      const updateSwipeFill = (p) => {
+        if (!finishBtn) return;
+        const pct = Math.max(0, Math.min(1, p)) * 100;
+        const fillStop = Math.max(pct, 12); // keep a visible leading block
+        const grad = `linear-gradient(90deg,
+          rgba(11,18,32,0.95) 0%,
+          rgba(11,18,32,0.95) 12%,
+          rgba(255,149,0,0.95) 12%,
+          rgba(255,149,0,0.95) ${fillStop}%,
+          rgba(11,18,32,0.9) ${fillStop}%,
+          rgba(11,18,32,0.9) 100%)`;
+        finishBtn.style.setProperty('--background', grad);
+        finishBtn.style.setProperty('--background-hover', grad);
+      };
+      attachSwipeRight(finishBtn, () => {
         finishSetManual();
         haptics(50);
-      });
+      }, updateSwipeFill);
 
       // Record modal
       $("sessionBtn").addEventListener('click', async () => {
@@ -1340,8 +1486,6 @@
         await presentOverlay(maxModal);
       });
       $("closeMax").addEventListener('click', () => dismissOverlay(maxModal));
-      $("plusMaxBtn").addEventListener('click', () => incMax(1));
-      $("minusMaxBtn").addEventListener('click', () => incMax(-1));
       $("finishMaxBtn").addEventListener('click', () => finishMaxTest());
       $("maxTapArea").addEventListener('pointerdown', (e) => { e.preventDefault(); incMax(1); });
       $("maxTapArea").addEventListener('click', (e) => { e.preventDefault(); incMax(1); });
