@@ -26,20 +26,28 @@
       --background: linear-gradient(180deg, #06080c 0%, #0b0f14 40%, #0b0f14 100%);
     }
 
-    /* Fix iOS alert readability: alerts can default to light styling while app is dark */
-    ion-alert {
-      --background: rgba(18, 24, 38, 0.98);
+    /* Fix iOS alert readability: ion-alert uses scoped CSS (no shadow parts).
+       Apply a cssClass to alerts and style the internal elements with higher specificity. */
+    ion-alert.dark-alert {
       --backdrop-opacity: 0.65;
+      --background: rgba(18, 24, 38, 0.98);
       --min-width: 280px;
       --max-width: 360px;
-      --color: rgba(231, 238, 247, 0.95);
-      --button-color: var(--ion-color-primary);
     }
-    ion-alert::part(title) {
+    .dark-alert .alert-wrapper {
+      background: rgba(18, 24, 38, 0.98);
+      color: rgba(231, 238, 247, 0.95);
+    }
+    .dark-alert .alert-head h2,
+    .dark-alert .alert-title {
       color: rgba(231, 238, 247, 0.98);
     }
-    ion-alert::part(message) {
+    .dark-alert .alert-message {
       color: rgba(231, 238, 247, 0.88);
+    }
+    .dark-alert button.alert-button,
+    .dark-alert .alert-button {
+      color: var(--ion-color-primary);
     }
     .muted { opacity: 0.75; }
     .bigNumber { font-size: 64px; font-weight: 800; line-height: 1; }
@@ -1729,6 +1737,7 @@
       $("closeTraining").addEventListener('click', async () => {
         // Do not lose counts accidentally
         const alert = document.createElement('ion-alert');
+        alert.cssClass = 'dark-alert';
         alert.header = 'End session?';
         alert.message = 'Your current session progress will be kept (not saved) unless you finish it.';
         alert.buttons = [
@@ -2034,6 +2043,7 @@
       // Wipe
       $("wipeBtn").addEventListener('click', async () => {
         const alert = document.createElement('ion-alert');
+        alert.cssClass = 'dark-alert';
         alert.header = 'Wipe all data?';
         alert.message = 'This deletes workouts and settings from this device.';
         alert.buttons = [
