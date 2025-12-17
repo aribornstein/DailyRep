@@ -144,24 +144,79 @@
 
     /* Live swipe progress cue on Finish button */
     .swipeBtn {
-      --swipe-progress: 0;
       --color: #fff;
       --base-bg: #0b1220;
       --fill-bg: #ff9500;
-      --background: linear-gradient(90deg,
-        rgba(255,149,0,0.9) 0%,
-        rgba(255,149,0,0.9) calc(var(--swipe-progress) * 1%),
-        rgba(11,18,32,0.9) calc(var(--swipe-progress) * 1%),
-        rgba(11,18,32,0.9) 100%);
-      --background-hover: var(--background);
+      --background: rgba(11,18,32,0.95);
+      --background-hover: rgba(11,18,32,0.95);
+      --border-color: rgba(34,48,71,.9);
+      --border-radius: 999px;
       position: relative;
       overflow: hidden;
       isolation: isolate;
-      transition: --swipe-progress 80ms linear;
       touch-action: pan-y; /* allow vertical scroll, capture horizontal swipe */
       user-select: none;
       -webkit-user-select: none;
       -webkit-touch-callout: none;
+      height: 56px;
+      border-radius: 999px;
+      border: 1px solid var(--border-color);
+      background: var(--background);
+      display: flex;
+      align-items: center;
+    }
+
+    .swipeBtn .swipeFill {
+      position: absolute;
+      inset: 0;
+      width: 0%;
+      background: rgba(255,149,0,0.22);
+      pointer-events: none;
+      border-radius: 999px;
+      transition: width 180ms ease;
+    }
+
+    .swipeBtn .swipeKnob {
+      position: absolute;
+      top: 50%;
+      left: 10px;
+      width: 44px;
+      height: 44px;
+      transform: translate(0, -50%);
+      border-radius: 999px;
+      background: rgba(255,149,0,0.95);
+      box-shadow: 0 6px 18px rgba(0,0,0,.35);
+      pointer-events: auto;
+      cursor: grab;
+      transition: transform 180ms ease;
+      touch-action: none; /* we handle pointer movement */
+      display: grid;
+      place-items: center;
+    }
+
+    .swipeBtn .swipeKnob:active { cursor: grabbing; }
+
+    .swipeBtn .swipeChev {
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid rgba(11,15,20,.75);
+      border-top: 2px solid rgba(11,15,20,.75);
+      transform: rotate(45deg);
+      margin-left: 2px;
+      opacity: .95;
+      pointer-events: none;
+    }
+
+    .swipeBtn .swipeLabel {
+      position: relative;
+      z-index: 1;
+      display: block;
+      width: 100%;
+      text-align: center;
+      font-weight: 800;
+      letter-spacing: .02em;
+      padding-left: 38px; /* visually balance the knob */
+      opacity: .85;
     }
 
     /* Hide scrollbars for the strip on iOS */
@@ -390,9 +445,11 @@
 
             <div class="trainingBottom">
               <div class="bottomRow">
-                <ion-button class="smallBtn swipeBtn" fill="solid" color="primary" id="finishSetBtn">
-                  Swipe right to finish set.
-                </ion-button>
+                <div class="swipeBtn" id="finishSetBtn" aria-label="Swipe right to finish set" role="group">
+                  <span class="swipeFill" aria-hidden="true"></span>
+                  <span class="swipeKnob" role="button" aria-label="Swipe thumb"><span class="swipeChev" aria-hidden="true"></span></span>
+                  <span class="swipeLabel">Swipe right to finish set.</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1629,25 +1686,160 @@
       // pointerdown for immediacy; avoid double-fire by skipping click
       tapArea.addEventListener('pointerdown', tapHandler);
 
+      // Slide-to-finish (true "slide to unlock" drag) — implemented with pointer capture for iOS reliability.
       const finishBtn = $("finishSetBtn");
-      const updateSwipeFill = (p) => {
-        if (!finishBtn) return;
-        const pct = Math.max(0, Math.min(1, p)) * 100;
-        const fillStop = Math.max(pct, 12); // keep a visible leading block
-        const grad = `linear-gradient(90deg,
-          rgba(11,18,32,0.95) 0%,
-          rgba(11,18,32,0.95) 12%,
-          rgba(255,149,0,0.95) 12%,
-          rgba(255,149,0,0.95) ${fillStop}%,
-          rgba(11,18,32,0.9) ${fillStop}%,
-          rgba(11,18,32,0.9) 100%)`;
-        finishBtn.style.setProperty('--background', grad);
-        finishBtn.style.setProperty('--background-hover', grad);
+      const finishThumb = finishBtn?.querySelector('.swipeKnob') || null;
+      const finishFill = finishBtn?.querySelector('.swipeFill') || null;
+      const finishLabel = finishBtn?.querySelector('.swipeLabel') || null;
+      let finishSlidingLocked = false;
+
+      const clamp = (n, min, max) => Math.min(max, Math.max(min, n));
+      const layoutFinish = () => {
+        const rect = finishBtn?.getBoundingClientRect();
+        const w = rect?.width || 0;
+        const knobW = 44;
+        const leftPad = 10;
+        const rightPad = 10;
+        const maxX = Math.max(0, w - leftPad - knobW - rightPad);
+        return { maxX, knobW, leftPad, rightPad };
       };
-      attachSwipeRight(finishBtn, () => {
-        finishSetManual();
-        haptics(50);
-      }, updateSwipeFill);
+      const setFinishX = (x, { animate = false } = {}) => {
+        if (!finishBtn || !finishThumb || !finishFill) return;
+        finishThumb.style.transition = animate ? 'transform 180ms ease' : 'none';
+        finishFill.style.transition = animate ? 'width 180ms ease' : 'none';
+        finishThumb.style.transform = `translate(${Math.round(x)}px, -50%)`;
+        const { knobW, leftPad } = layoutFinish();
+        finishFill.style.width = `${Math.round(x + knobW + leftPad)}px`;
+      };
+
+      // initialize visuals
+      setFinishX(0, { animate: false });
+
+      if (finishThumb && finishBtn) {
+        let activePointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let baseX = 0;
+
+        const onDown = (clientX, clientY) => {
+          if (finishSlidingLocked) return;
+          activePointerId = activePointerId ?? 0;
+          startX = clientX;
+          startY = clientY;
+          baseX = 0;
+          finishThumb.style.transition = 'none';
+          finishFill.style.transition = 'none';
+        };
+
+        const onMove = (clientX, clientY) => {
+          if (finishSlidingLocked) return;
+          const dy = Math.abs(clientY - startY);
+          if (dy > 70) {
+            if (finishLabel) finishLabel.textContent = 'Swipe right to finish set.';
+            setFinishX(0, { animate: true });
+            activePointerId = null;
+            return;
+          }
+          const { maxX } = layoutFinish();
+          const dx = clientX - startX;
+          const x = clamp(baseX + dx, 0, maxX);
+          setFinishX(x, { animate: false });
+          const progress = maxX ? x / maxX : 0;
+          if (finishLabel) finishLabel.textContent = progress > 0.95 ? 'Release to finish' : 'Swipe right to finish set.';
+        };
+
+        const onEnd = (clientX, clientY) => {
+          if (finishSlidingLocked) return;
+          const { maxX } = layoutFinish();
+          const dx = clientX - startX;
+          const x = clamp(baseX + dx, 0, maxX);
+          const progress = maxX ? x / maxX : 0;
+
+          if (progress >= 0.92) {
+            finishSlidingLocked = true;
+            if (finishLabel) finishLabel.textContent = 'Finishing…';
+            setFinishX(maxX, { animate: true });
+
+            if (session.active && !session.resting) {
+              finishSetManual();
+              haptics(50);
+            }
+
+            setTimeout(() => {
+              setFinishX(0, { animate: true });
+              if (finishLabel) finishLabel.textContent = 'Swipe right to finish set.';
+              finishSlidingLocked = false;
+            }, 450);
+          } else {
+            if (finishLabel) finishLabel.textContent = 'Swipe right to finish set.';
+            setFinishX(0, { animate: true });
+          }
+
+          activePointerId = null;
+        };
+
+        if ('PointerEvent' in window) {
+          finishThumb.addEventListener('pointerdown', (e) => {
+            if (finishSlidingLocked) return;
+            try { e.preventDefault(); } catch {}
+            activePointerId = e.pointerId;
+            startX = e.clientX;
+            startY = e.clientY;
+            baseX = 0;
+            try { finishThumb.setPointerCapture?.(activePointerId); } catch {}
+            finishThumb.style.transition = 'none';
+            finishFill.style.transition = 'none';
+          }, { passive: false });
+
+          finishThumb.addEventListener('pointermove', (e) => {
+            if (activePointerId == null) return;
+            if (e.pointerId !== activePointerId) return;
+            try { e.preventDefault(); } catch {}
+            onMove(e.clientX, e.clientY);
+          }, { passive: false });
+
+          const endPtr = (e) => {
+            if (activePointerId == null) return;
+            if (e.pointerId !== activePointerId) return;
+            try { e.preventDefault(); } catch {}
+            onEnd(e.clientX, e.clientY);
+            try { finishThumb.releasePointerCapture?.(e.pointerId); } catch {}
+          };
+          finishThumb.addEventListener('pointerup', endPtr, { passive: false });
+          finishThumb.addEventListener('pointercancel', endPtr, { passive: false });
+        } else {
+          // Touch fallback
+          finishThumb.addEventListener('touchstart', (e) => {
+            if (finishSlidingLocked) return;
+            const t = e.touches && e.touches[0];
+            if (!t) return;
+            try { e.preventDefault(); } catch {}
+            onDown(t.clientX, t.clientY);
+          }, { passive: false });
+          finishThumb.addEventListener('touchmove', (e) => {
+            const t = e.touches && e.touches[0];
+            if (!t) return;
+            try { e.preventDefault(); } catch {}
+            onMove(t.clientX, t.clientY);
+          }, { passive: false });
+          finishThumb.addEventListener('touchend', (e) => {
+            const t = (e.changedTouches && e.changedTouches[0]) || null;
+            if (!t) return;
+            try { e.preventDefault(); } catch {}
+            onEnd(t.clientX, t.clientY);
+          }, { passive: false });
+          finishThumb.addEventListener('touchcancel', () => {
+            if (finishLabel) finishLabel.textContent = 'Swipe right to finish set.';
+            setFinishX(0, { animate: true });
+            activePointerId = null;
+          }, { passive: false });
+        }
+
+        // Prevent clicks from triggering anything
+        finishBtn.addEventListener('click', (e) => {
+          try { e.preventDefault(); } catch {}
+        });
+      }
 
       // Record modal
       $("sessionBtn").addEventListener('click', async () => {
