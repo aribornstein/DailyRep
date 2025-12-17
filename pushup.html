@@ -128,20 +128,11 @@
       align-items: center;
       flex-wrap: wrap;
     }
-    .restBadge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      border-radius: 999px;
-      border: 1px solid rgba(34,48,71,.9);
-      background: #0b1220;
-      font-weight: 800;
+    #finishSetBtn {
+      flex: 1;
+      width: 100%;
     }
-    .restBadge.resting {
-      border-color: rgba(255,209,102,.9);
-      box-shadow: 0 0 0 3px rgba(255,209,102,.15);
-    }
+    /* restBadge removed */
     .smallBtn {
       --border-radius: 14px;
     }
@@ -366,28 +357,19 @@
             <div class="tapArea" id="tapArea" aria-label="Tap to count reps" role="button">
               <div class="tapInner">
                 <div class="tapCount" id="curCount">0</div>
-                <div class="tapHint">TAP TO COUNT</div>
-                <div class="tapMeta mono muted">Tap anywhere in this area. Use − / + for corrections.</div>
+                <div class="tapHint" id="tapHint">TAP TO COUNT</div>
+                <div class="tapMeta mono muted" id="tapMeta">Tap to count reps. During rest, the timer shows here—tap to skip.</div>
               </div>
             </div>
 
             <div class="trainingBottom">
               <div class="bottomRow">
-                <div class="restBadge" id="restBadge">
-                  <ion-icon name="timer-outline"></ion-icon>
-                  <span>Rest:</span>
-                  <span id="restLeft">—</span>
-                </div>
-
-                <ion-button class="smallBtn" fill="outline" color="primary" id="skipRestBtn">
-                  Skip rest
-                </ion-button>
                 <ion-button class="smallBtn" fill="outline" color="primary" id="finishSetBtn">
-                  Finish set
+                  Swipe right to finish set.
                 </ion-button>
               </div>
               <div class="muted" style="font-size:12px; margin-top:10px">
-                Auto-rest starts when you hit the target. When all 5 sets are done, we’ll fill the Workout screen for you.
+                Auto-rest starts when you hit the target. Swipe right on Finish to advance manually. When all 5 sets are done, we’ll fill the Workout screen for you.
               </div>
             </div>
           </div>
@@ -934,19 +916,50 @@
     }
 
     function setRestUI() {
-      const badge = $("restBadge");
-      const left = $("restLeft");
+      const hint = $("tapHint");
+      const meta = $("tapMeta");
+      const count = $("curCount");
       if (!session.resting) {
-        badge.classList.remove('resting');
-        left.textContent = '—';
         return;
       }
-      badge.classList.add('resting');
-      left.textContent = `${session.restRemaining}s`;
+      if (count) count.textContent = String(session.restRemaining);
+      if (hint) hint.textContent = 'REST';
+      if (meta) meta.textContent = 'Tap to skip rest';
     }
 
     function haptics(ms=40) {
       try { navigator.vibrate?.(ms); } catch {}
+    }
+
+    function attachSwipeRight(el, onSwipe) {
+      if (!el || typeof onSwipe !== 'function') return;
+      let startX = 0;
+      let startY = 0;
+      let swiping = false;
+      const threshold = 70;
+      const restraint = 60;
+
+      el.addEventListener('pointerdown', (e) => {
+        startX = e.clientX;
+        startY = e.clientY;
+        swiping = true;
+      });
+
+      el.addEventListener('pointermove', (e) => {
+        if (!swiping) return;
+        const dx = e.clientX - startX;
+        const dy = Math.abs(e.clientY - startY);
+        if (dx > threshold && dy < restraint) {
+          swiping = false;
+          onSwipe();
+        }
+      });
+
+      const stop = () => { swiping = false; };
+      el.addEventListener('pointerup', stop);
+      el.addEventListener('pointercancel', stop);
+      el.addEventListener('pointerleave', stop);
+      el.addEventListener('click', (e) => e.preventDefault());
     }
 
     function getAudioCtx() {
@@ -980,7 +993,15 @@
       const i = session.curIndex;
       $("curSet").textContent = String(i + 1);
       $("curTarget").textContent = String(session.targets[i]);
-      $("curCount").textContent = String(session.actual[i]);
+      if (session.resting) {
+        $("curCount").textContent = String(session.restRemaining);
+        $("tapHint").textContent = 'REST';
+        $("tapMeta").textContent = 'Tap to skip rest';
+      } else {
+        $("curCount").textContent = String(session.actual[i]);
+        $("tapHint").textContent = 'TAP TO COUNT';
+        $("tapMeta").textContent = 'Tap to count reps. During rest, the timer shows here—tap to skip.';
+      }
 
       // strip
       const strip = $("targetStrip");
@@ -997,7 +1018,7 @@
       setRestUI();
 
       // Disable tap while resting
-      $("tapArea").style.opacity = session.resting ? '0.55' : '1';
+      $("tapArea").style.opacity = session.resting ? '0.8' : '1';
     }
 
     function restSecondsForSet(setIndex) {
@@ -1287,6 +1308,10 @@
       const tapArea = $("tapArea");
       const tapHandler = (e) => {
         e.preventDefault();
+        if (session.resting) {
+          skipRest();
+          return;
+        }
         incRep(1);
         // Auto-advance if above target too
         maybeAutoAdvance();
@@ -1294,8 +1319,10 @@
       // pointerdown for immediacy; avoid double-fire by skipping click
       tapArea.addEventListener('pointerdown', tapHandler);
 
-      $("skipRestBtn").addEventListener('click', skipRest);
-      $("finishSetBtn").addEventListener('click', finishSetManual);
+      attachSwipeRight($("finishSetBtn"), () => {
+        finishSetManual();
+        haptics(50);
+      });
 
       // Record modal
       $("sessionBtn").addEventListener('click', async () => {
