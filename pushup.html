@@ -583,21 +583,32 @@
         // Some browsers may briefly leak audio if only `volume=0`, so also set `muted=true`.
         const prevMuted = Boolean(el.muted);
         const prevVol = el.volume;
+        let restored = false;
+        const restore = () => {
+          if (restored) return;
+          restored = true;
+          try { el.pause(); } catch {}
+          try { el.currentTime = 0; } catch {}
+          el.muted = prevMuted;
+          el.volume = prevVol;
+        };
         try { el.currentTime = 0; } catch {}
         el.muted = true;
         el.volume = 0;
 
         const p = el.play();
-        Promise.resolve(p).then(() => {
-          try { el.pause(); } catch {}
-          try { el.currentTime = 0; } catch {}
+        // Always restore quickly, even if the play() promise never settles.
+        setTimeout(() => {
           beepPrimed = true;
+          restore();
+        }, 120);
+
+        Promise.resolve(p).then(() => {
+          beepPrimed = true;
+          restore();
         }).catch(() => {
-          // ignore
-        }).finally(() => {
-          // Restore state after priming is complete so real beeps are audible.
-          el.muted = prevMuted;
-          el.volume = prevVol;
+          // Even if play fails, restore state so we don't leave audio muted.
+          restore();
         });
       } catch {}
     }
@@ -1337,6 +1348,9 @@
       // Try HTMLMediaElement beep first (best chance to bypass iOS Silent)
       try {
         const el = getBeepEl();
+        // Defensive: priming should restore these, but ensure beeps can never stay muted.
+        el.muted = false;
+        el.volume = 1.0;
         el.currentTime = 0;
         const p = el.play();
         // If it plays, add a light haptic too.
