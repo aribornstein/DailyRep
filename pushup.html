@@ -1101,6 +1101,13 @@
       }
     }
 
+    function formatRestTime(seconds) {
+      const total = Math.max(0, Math.trunc(Number(seconds) || 0));
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
     function setRestUI() {
       const hint = $("tapHint");
       const meta = $("tapMeta");
@@ -1108,7 +1115,7 @@
       if (!session.resting) {
         return;
       }
-      if (count) count.textContent = String(session.restRemaining);
+      if (count) count.textContent = formatRestTime(session.restRemaining);
       if (hint) hint.textContent = 'REST';
       if (meta) meta.textContent = 'Tap to skip rest';
     }
@@ -1383,7 +1390,7 @@
       $("curSet").textContent = String(i + 1);
       $("curTarget").textContent = String(session.targets[i]);
       if (session.resting) {
-        $("curCount").textContent = String(session.restRemaining);
+        $("curCount").textContent = formatRestTime(session.restRemaining);
         $("tapHint").textContent = 'REST';
         $("tapMeta").textContent = 'Tap to skip rest';
       } else {
