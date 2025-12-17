@@ -977,10 +977,36 @@
       session.speakLocked = false;
     }
 
+    let speechPrimed = false;
+    function primeSpeech() {
+      const synth = window.speechSynthesis;
+      if (!synth || speechPrimed) return;
+      try {
+        const u = new SpeechSynthesisUtterance('ready');
+        u.volume = 0; // inaudible primer to unlock iOS Safari
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        u.onend = () => { speechPrimed = true; };
+        // Some iOS versions need a voice present before speak works
+        const voices = synth.getVoices();
+        if (voices && voices.length) u.voice = voices[0];
+        synth.speak(u);
+      } catch {
+        speechPrimed = false;
+      }
+    }
+    // Prime speech on first interaction to satisfy iOS user-gesture requirement
+    ['pointerdown', 'touchstart', 'mousedown'].forEach((ev) => {
+      window.addEventListener(ev, () => { primeSpeech(); }, { once: true, passive: true });
+    });
+    window.addEventListener('keydown', () => { primeSpeech(); }, { once: true });
+    window.speechSynthesis?.addEventListener?.('voiceschanged', primeSpeech);
+
     function speak(text) {
       try {
         const synth = window.speechSynthesis;
         if (!synth || !text) return;
+        if (!speechPrimed) primeSpeech();
         synth.cancel();
         const u = new SpeechSynthesisUtterance(String(text));
         u.rate = 1.0;
@@ -1219,7 +1245,6 @@
       session.speakLocked = false;
       stopSpeech();
       renderSessionUI();
-      toast('Rest skipped');
     }
 
     function maybeAutoAdvance() {
