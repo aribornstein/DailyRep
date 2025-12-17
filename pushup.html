@@ -494,6 +494,38 @@
     ];
     let audioCtx = null;
 
+    // Prefer an actual audio file for beep (more likely to play on iOS even when Silent is on)
+    let beepEl = null;
+    let beepPrimed = false;
+    function getBeepEl() {
+      if (!beepEl) {
+        beepEl = new Audio('sounds/beep.wav');
+        beepEl.preload = 'auto';
+        beepEl.volume = 1.0;
+        // iOS Safari hint
+        beepEl.playsInline = true;
+      }
+      return beepEl;
+    }
+    function primeBeep() {
+      if (beepPrimed) return;
+      try {
+        const el = getBeepEl();
+        // Prime during a user gesture: play muted very briefly, then pause.
+        const prevVol = el.volume;
+        el.volume = 0;
+        const p = el.play();
+        Promise.resolve(p).then(() => {
+          try { el.pause(); } catch {}
+          try { el.currentTime = 0; } catch {}
+          el.volume = prevVol;
+          beepPrimed = true;
+        }).catch(() => {
+          el.volume = prevVol;
+        });
+      } catch {}
+    }
+
     // Register service worker for install/offline
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -1127,17 +1159,29 @@
       }).catch(() => {});
     }
     ['pointerdown', 'touchstart', 'mousedown'].forEach((ev) => {
-      window.addEventListener(ev, unlockAudioOnce, { once: true, passive: true });
+      window.addEventListener(ev, () => { unlockAudioOnce(); primeBeep(); }, { once: true, passive: true });
     });
-    window.addEventListener('keydown', unlockAudioOnce, { once: true });
+    window.addEventListener('keydown', () => { unlockAudioOnce(); primeBeep(); }, { once: true });
 
     function playBeep() {
       const s = loadSettings();
       if (s.soundOn === false) return;
+
+      // Try HTMLMediaElement beep first (best chance to bypass iOS Silent)
+      try {
+        const el = getBeepEl();
+        el.currentTime = 0;
+        const p = el.play();
+        // If it plays, add a light haptic too.
+        Promise.resolve(p).then(() => haptics(10)).catch(() => {});
+        return;
+      } catch {}
+
+      // Fallback: WebAudio oscillator (may be muted by iOS Silent)
       if (!audioUnlocked) unlockAudioOnce();
       const ctx = getAudioCtx();
       if (!ctx || ctx.state !== 'running') {
-        haptics(40); // fallback for silent/muted scenarios (iOS hardware mute)
+        haptics(40);
         return;
       }
       const now = ctx.currentTime;
@@ -1150,7 +1194,6 @@
       osc.connect(gain).connect(ctx.destination);
       osc.start(now);
       osc.stop(now + 0.16);
-      // light haptic alongside audio for better feedback on muted devices
       haptics(12);
     }
 
@@ -1279,7 +1322,6 @@
       haptics(20);
       // lightweight render: only fully render when reaching target or correcting below
       if (session.actual[i] === session.targets[i]) {
-        toast('Target hit');
         renderSessionUI();
         maybeAutoAdvance();
       } else {
