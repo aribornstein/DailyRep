@@ -1,5 +1,6 @@
-const CACHE_NAME = 'dailyrep-pushups-v2';
+const CACHE_NAME = 'dailyrep-pushups-v3';
 const ASSETS = [
+  './',
   './pushup.html',
   './manifest.json',
   './icons/icon-192.png',
@@ -30,6 +31,20 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
+
+  // SPA-style navigation fallback: when offline, serve the cached app shell.
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const respClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, respClone));
+          return response;
+        })
+        .catch(() => caches.match('./pushup.html'))
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
