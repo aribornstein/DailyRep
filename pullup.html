@@ -163,23 +163,17 @@
 
   <div class="hint">
     • Keep phone firmly in your pocket.<br/>
-    • If it miscounts, adjust the tunables in the code (<code>MOVEMENT_THRESHOLD</code>, <code>MIN_REP_INTERVAL</code>, <code>SMOOTH_WINDOW_MS</code>).
+    • Watch <code>Max smoothed</code> after a set; set <code>MOVEMENT_THRESHOLD</code> to ~70–80% of that.<br/>
+    • Then tweak <code>MIN_REP_INTERVAL</code> if it double-counts.
   </div>
 </div>
 
 <script>
-  // ==== TUNABLE PARAMETERS (based on your experiments) ========
-  // Smoothing window for net acceleration (milliseconds)
-  const SMOOTH_WINDOW_MS = 150;
-
-  // Threshold on *smoothed* net acceleration (m/s²)
-  const MOVEMENT_THRESHOLD = 4.75;
-
-  // Minimum time between reps (ms) to avoid double-counting
-  const MIN_REP_INTERVAL = 900;
-
-  // How long smoothed movement must stay "strong" before we count a rep (ms)
-  const MIN_STRONG_DURATION = 120;
+  // ==== TUNABLE PARAMETERS ====================================
+  const SMOOTH_WINDOW_MS = 150;   // smoothing window
+  let   MOVEMENT_THRESHOLD = 4.0; // default; adjust based on "Max smoothed" you see
+  const MIN_REP_INTERVAL = 900;   // ms between reps
+  const MIN_STRONG_DURATION = 100; // ms of strong movement
   // ============================================================
 
   let listening = false;
@@ -192,8 +186,10 @@
   let motionHandler = null;
   let audioCtx = null;
 
-  // For smoothing: keep recent samples within SMOOTH_WINDOW_MS
-  const smoothBuffer = []; // each item: { t, net }
+  const smoothBuffer = []; // {t, net}
+
+  let maxRawNet = 0;
+  let maxSmoothNet = 0;
 
   const repCountEl = document.getElementById('repCount');
   const statusEl = document.getElementById('status');
@@ -245,20 +241,17 @@
     const az = acc.z || 0;
 
     const mag = Math.sqrt(ax * ax + ay * ay + az * az);
-    // approximate "extra" acceleration beyond gravity
-    const net = Math.abs(mag - 9.81);
+    const net = Math.abs(mag - 9.81); // "extra" beyond gravity
 
-    return { net, mag, ax, ay, az };
+    return { net, mag };
   }
 
   function updateSmoothingBuffer(t, net) {
     smoothBuffer.push({ t, net });
     const cutoff = t - SMOOTH_WINDOW_MS;
-    // drop old samples outside window
     while (smoothBuffer.length && smoothBuffer[0].t < cutoff) {
       smoothBuffer.shift();
     }
-    // compute average
     let sum = 0;
     for (const s of smoothBuffer) sum += s.net;
     return sum / smoothBuffer.length;
@@ -273,23 +266,25 @@
 
     const netRaw = accel.net;
     const mag = accel.mag;
-
     const netSmooth = updateSmoothingBuffer(t, netRaw);
 
-    // Update on-screen metrics occasionally
-    if (t % 60 < 20) {
+    if (netRaw > maxRawNet) maxRawNet = netRaw;
+    if (netSmooth > maxSmoothNet) maxSmoothNet = netSmooth;
+
+    // Live metrics
+    if (t % 80 < 20) {
       metricsEl.textContent =
-        `Raw net:      ${netRaw.toFixed(2)} m/s²\n` +
-        `Smoothed net: ${netSmooth.toFixed(2)} m/s²\n` +
-        `Total mag:    ${mag.toFixed(2)} m/s²`;
+        `Raw net:       ${netRaw.toFixed(2)} m/s²\n` +
+        `Smoothed net:  ${netSmooth.toFixed(2)} m/s²\n` +
+        `Max raw:       ${maxRawNet.toFixed(2)} m/s²\n` +
+        `Max smoothed:  ${maxSmoothNet.toFixed(2)} m/s²\n` +
+        `Threshold:     ${MOVEMENT_THRESHOLD.toFixed(2)} m/s²`;
     }
 
     const strong = netSmooth > MOVEMENT_THRESHOLD;
 
     if (strong) {
-      if (strongMovementStart === null) {
-        strongMovementStart = t;
-      }
+      if (strongMovementStart === null) strongMovementStart = t;
       const duration = t - strongMovementStart;
 
       if (!inRep &&
@@ -305,7 +300,6 @@
       }
     } else {
       strongMovementStart = null;
-      // reset rep state when movement calms down below half threshold
       if (inRep && netSmooth < MOVEMENT_THRESHOLD * 0.5) {
         inRep = false;
       }
@@ -318,9 +312,12 @@
     motionHandler = onMotion;
     window.addEventListener('devicemotion', motionHandler);
     listening = true;
+
     smoothBuffer.length = 0;
     strongMovementStart = null;
     inRep = false;
+    maxRawNet = 0;
+    maxSmoothNet = 0;
 
     setStatus('Listening for pull-ups…', 'ok', 'You can now put the phone in your pocket and start.');
     startBtn.disabled = true;
@@ -341,28 +338,22 @@
   }
 
   async function requestMotionPermissionIfNeeded() {
-    // iOS 13+ requires explicit permission for motion
     const DeviceMotionEventRef = window.DeviceMotionEvent;
     if (DeviceMotionEventRef && typeof DeviceMotionEventRef.requestPermission === 'function') {
       try {
         const response = await DeviceMotionEventRef.requestPermission();
-        if (response === 'granted') {
-          return true;
-        } else {
-          setStatus('Motion permission denied.', 'err',
-            'Go to Settings > Safari > Motion & Orientation Access, and enable it.');
-          return false;
-        }
+        if (response === 'granted') return true;
+
+        setStatus('Motion permission denied.', 'err',
+          'Go to Settings > Safari > Motion & Orientation Access, and enable it.');
+        return false;
       } catch (err) {
         console.error(err);
         setStatus('Unable to request motion permission.', 'err', String(err));
         return false;
       }
     } else {
-      // Non-iOS or older: if devicemotion exists, we assume allowed
-      if ('DeviceMotionEvent' in window) {
-        return true;
-      }
+      if ('DeviceMotionEvent' in window) return true;
       setStatus('Device motion not supported on this browser.', 'err');
       return false;
     }
@@ -371,11 +362,7 @@
   startBtn.addEventListener('click', async () => {
     initAudio();
     if (audioCtx && audioCtx.state === 'suspended') {
-      try {
-        await audioCtx.resume();
-      } catch (e) {
-        console.warn('Could not resume audio context', e);
-      }
+      try { await audioCtx.resume(); } catch (e) {}
     }
 
     const ok = await requestMotionPermissionIfNeeded();
@@ -393,10 +380,8 @@
     stopListening();
   });
 
-  // Just in case user leaves the page
   window.addEventListener('pagehide', stopListening);
   window.addEventListener('blur', () => {
-    // optional: auto-stop when tab loses focus
     stopListening();
   });
 </script>
