@@ -134,6 +134,7 @@
       font-size: 0.8rem;
       opacity: 0.7;
       line-height: 1.4;
+      white-space: pre-line;
     }
 
     code {
@@ -162,20 +163,23 @@
 
   <div class="hint">
     • Keep phone firmly in your pocket.<br/>
-    • If it miscounts, adjust the thresholds in the code (<code>MOVEMENT_THRESHOLD</code>, <code>MIN_REP_INTERVAL</code>).
+    • If it miscounts, adjust the tunables in the code (<code>MOVEMENT_THRESHOLD</code>, <code>MIN_REP_INTERVAL</code>, <code>SMOOTH_WINDOW_MS</code>).
   </div>
 </div>
 
 <script>
-  // ==== TUNABLE PARAMETERS ====================================
-  // How strong the movement (in m/s²) must be (above gravity) to count as a pull-up phase
-  const MOVEMENT_THRESHOLD = 4.0;
+  // ==== TUNABLE PARAMETERS (based on your experiments) ========
+  // Smoothing window for net acceleration (milliseconds)
+  const SMOOTH_WINDOW_MS = 150;
+
+  // Threshold on *smoothed* net acceleration (m/s²)
+  const MOVEMENT_THRESHOLD = 4.75;
 
   // Minimum time between reps (ms) to avoid double-counting
-  const MIN_REP_INTERVAL = 800;
+  const MIN_REP_INTERVAL = 900;
 
-  // How long movement must stay "strong" before we consider we've started a rep
-  const MIN_STRONG_DURATION = 120; // ms
+  // How long smoothed movement must stay "strong" before we count a rep (ms)
+  const MIN_STRONG_DURATION = 120;
   // ============================================================
 
   let listening = false;
@@ -187,6 +191,9 @@
 
   let motionHandler = null;
   let audioCtx = null;
+
+  // For smoothing: keep recent samples within SMOOTH_WINDOW_MS
+  const smoothBuffer = []; // each item: { t, net }
 
   const repCountEl = document.getElementById('repCount');
   const statusEl = document.getElementById('status');
@@ -241,7 +248,20 @@
     // approximate "extra" acceleration beyond gravity
     const net = Math.abs(mag - 9.81);
 
-    return { net, mag };
+    return { net, mag, ax, ay, az };
+  }
+
+  function updateSmoothingBuffer(t, net) {
+    smoothBuffer.push({ t, net });
+    const cutoff = t - SMOOTH_WINDOW_MS;
+    // drop old samples outside window
+    while (smoothBuffer.length && smoothBuffer[0].t < cutoff) {
+      smoothBuffer.shift();
+    }
+    // compute average
+    let sum = 0;
+    for (const s of smoothBuffer) sum += s.net;
+    return sum / smoothBuffer.length;
   }
 
   function onMotion(event) {
@@ -251,15 +271,20 @@
     const accel = computeNetAccel(event);
     if (!accel) return;
 
-    const net = accel.net;
+    const netRaw = accel.net;
     const mag = accel.mag;
 
+    const netSmooth = updateSmoothingBuffer(t, netRaw);
+
     // Update on-screen metrics occasionally
-    if (t % 5 === 0) {
-      metricsEl.textContent = `Current movement: net=${net.toFixed(2)} m/s²  |  total=${mag.toFixed(2)} m/s²`;
+    if (t % 60 < 20) {
+      metricsEl.textContent =
+        `Raw net:      ${netRaw.toFixed(2)} m/s²\n` +
+        `Smoothed net: ${netSmooth.toFixed(2)} m/s²\n` +
+        `Total mag:    ${mag.toFixed(2)} m/s²`;
     }
 
-    const strong = net > MOVEMENT_THRESHOLD;
+    const strong = netSmooth > MOVEMENT_THRESHOLD;
 
     if (strong) {
       if (strongMovementStart === null) {
@@ -268,8 +293,8 @@
       const duration = t - strongMovementStart;
 
       if (!inRep &&
-          duration > MIN_STRONG_DURATION &&
-          t - lastRepTime > MIN_REP_INTERVAL) {
+          duration >= MIN_STRONG_DURATION &&
+          t - lastRepTime >= MIN_REP_INTERVAL) {
 
         inRep = true;
         lastRepTime = t;
@@ -280,8 +305,8 @@
       }
     } else {
       strongMovementStart = null;
-      // reset rep state when movement calms down
-      if (inRep && net < MOVEMENT_THRESHOLD * 0.5) {
+      // reset rep state when movement calms down below half threshold
+      if (inRep && netSmooth < MOVEMENT_THRESHOLD * 0.5) {
         inRep = false;
       }
     }
@@ -293,6 +318,10 @@
     motionHandler = onMotion;
     window.addEventListener('devicemotion', motionHandler);
     listening = true;
+    smoothBuffer.length = 0;
+    strongMovementStart = null;
+    inRep = false;
+
     setStatus('Listening for pull-ups…', 'ok', 'You can now put the phone in your pocket and start.');
     startBtn.disabled = true;
     stopBtn.disabled = false;
@@ -305,6 +334,7 @@
     motionHandler = null;
     inRep = false;
     strongMovementStart = null;
+    smoothBuffer.length = 0;
     setStatus('Stopped.', 'warn', 'Tap Start to listen again.');
     startBtn.disabled = false;
     stopBtn.disabled = true;
