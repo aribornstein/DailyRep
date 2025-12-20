@@ -1,8 +1,8 @@
 {
-  "name": "DailyRep-PushUps",
+  "name": "DailyRep",
   "short_name": "DailyRep",
-  "description": "Track daily push-up sessions, rest timers, and records with offline-friendly logging.",
-  "start_url": "pushup.html",
+  "description": "Track daily exercise sessions with offline-friendly logging.",
+  "start_url": "index.html",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait-primary",

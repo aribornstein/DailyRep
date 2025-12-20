@@ -1,7 +1,10 @@
-const CACHE_NAME = 'dailyrep-pushups-v3';
+const CACHE_NAME = 'dailyrep-v4';
 const ASSETS = [
   './',
+  './index.html',
   './pushup.html',
+  './pullup.html',
+  './pullup_logger.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -41,7 +44,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, respClone));
           return response;
         })
-        .catch(() => caches.match('./pushup.html'))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }
@@ -55,7 +58,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, respClone));
           return response;
         })
-        .catch(() => caches.match('./pushup.html'));
+        .catch(() => caches.match('./index.html'));
     })
   );
 });
