@@ -161,6 +161,8 @@
   let startTime = null;
   let samples = []; // {t, ax, ay, az, mag, net}
 
+  let wakeLock = null; // Screen wake lock sentinel
+
   const statusEl = document.getElementById('status');
   const statusSubEl = document.getElementById('statusSub');
   const metricsEl = document.getElementById('metrics');
@@ -175,6 +177,42 @@
        type === 'warn' ? 'status-warn' : 'status-err');
     statusSubEl.textContent = subText;
   }
+
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) {
+      console.log('Wake Lock API not supported.');
+      return;
+    }
+    try {
+      // Request a screen wake lock
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake lock released');
+      });
+      console.log('Wake lock active');
+    } catch (err) {
+      console.warn('Wake lock request failed', err);
+    }
+  }
+
+  async function releaseWakeLock() {
+    try {
+      if (wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+      }
+    } catch (err) {
+      console.warn('Wake lock release failed', err);
+    }
+  }
+
+  // If page becomes visible again (e.g., after briefly going to background),
+  // try to re-acquire the wake lock if we are still logging.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && logging) {
+      requestWakeLock();
+    }
+  });
 
   function computeAccel(event) {
     const acc = event.accelerationIncludingGravity || event.acceleration;
@@ -233,13 +271,17 @@
     downloadBtn.disabled = true;
     downloadBtn.classList.add('btn-disabled');
 
+    requestWakeLock(); // Try to keep the screen awake
+
     setStatus('Logging…', 'ok', 'Do ~5 pull-ups, then tap Stop Logging.');
   }
 
   function stopLogging() {
-    if (!listening) return;
+    if (!listening && !logging) return;
 
-    window.removeEventListener('devicemotion', motionHandler);
+    if (motionHandler) {
+      window.removeEventListener('devicemotion', motionHandler);
+    }
     listening = false;
     logging = false;
     motionHandler = null;
@@ -248,6 +290,8 @@
     stopBtn.disabled = true;
     downloadBtn.disabled = samples.length === 0;
     downloadBtn.classList.toggle('btn-disabled', samples.length === 0);
+
+    releaseWakeLock();
 
     setStatus('Logging stopped.', 'warn',
       samples.length + ' samples recorded. Tap Download CSV to export.');
@@ -334,8 +378,10 @@
     downloadCSV();
   });
 
-  window.addEventListener('pagehide', stopLogging);
-  window.addEventListener('blur', stopLogging);
+  // NOTE: we removed the automatic stop on blur/pagehide so locking the screen
+  // doesn’t immediately kill logging from our side. The OS may still pause sensors,
+  // which is why wake lock / disabling auto-lock is helpful.
 </script>
+
 </body>
 </html>
