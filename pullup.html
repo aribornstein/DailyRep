@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pull-up Beeper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      background: #0b1020;
+      color: #f7f7ff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 420px;
+      background: radial-gradient(circle at top, #28335f, #050814);
+      border-radius: 24px;
+      padding: 24px 20px 28px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.7rem;
+      margin-bottom: 4px;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      opacity: 0.8;
+      margin-bottom: 20px;
+    }
+
+    .counter {
+      margin: 14px auto 18px;
+      padding: 18px 10px;
+      border-radius: 18px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .counter-label {
+      font-size: 0.85rem;
+      opacity: 0.7;
+      margin-bottom: 6px;
+    }
+
+    .counter-value {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .status {
+      font-size: 0.9rem;
+      margin: 8px 0 4px;
+      min-height: 1.2em;
+    }
+
+    .status.small {
+      font-size: 0.8rem;
+      opacity: 0.7;
+    }
+
+    .status-ok {
+      color: #8be88b;
+    }
+
+    .status-warn {
+      color: #ffdf7a;
+    }
+
+    .status-err {
+      color: #ff7a7a;
+    }
+
+    .btn {
+      display: inline-block;
+      margin: 8px 4px 0;
+      padding: 12px 22px;
+      border-radius: 999px;
+      border: none;
+      outline: none;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.1s ease;
+    }
+
+    .btn-primary {
+      background: #4f88ff;
+      color: #fff;
+      box-shadow: 0 6px 14px rgba(79, 136, 255, 0.6);
+    }
+
+    .btn-primary:active {
+      transform: translateY(1px) scale(0.99);
+      box-shadow: 0 3px 7px rgba(79, 136, 255, 0.7);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      color: #fff;
+    }
+
+    .btn-secondary:active {
+      transform: translateY(1px) scale(0.99);
+    }
+
+    .hint {
+      font-size: 0.75rem;
+      opacity: 0.6;
+      margin-top: 14px;
+      line-height: 1.4;
+    }
+
+    .metrics {
+      margin-top: 10px;
+      font-size: 0.8rem;
+      opacity: 0.7;
+      line-height: 1.4;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.82em;
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <h1>Pull-up Beeper</h1>
+  <div class="subtitle">Put your phone in your pocket, tap Start, and do pull-ups.</div>
+
+  <div class="counter">
+    <div class="counter-label">Pull-ups detected</div>
+    <div class="counter-value" id="repCount">0</div>
+  </div>
+
+  <div id="status" class="status status-warn">Tap Start to enable sensors &amp; sound.</div>
+  <div id="statusSub" class="status small"></div>
+
+  <button id="startBtn" class="btn btn-primary">Start</button>
+  <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
+
+  <div class="metrics" id="metrics"></div>
+
+  <div class="hint">
+    • Keep phone firmly in your pocket.<br/>
+    • If it miscounts, adjust the thresholds in the code (<code>MOVEMENT_THRESHOLD</code>, <code>MIN_REP_INTERVAL</code>).
+  </div>
+</div>
+
+<script>
+  // ==== TUNABLE PARAMETERS ====================================
+  // How strong the movement (in m/s²) must be (above gravity) to count as a pull-up phase
+  const MOVEMENT_THRESHOLD = 4.0;
+
+  // Minimum time between reps (ms) to avoid double-counting
+  const MIN_REP_INTERVAL = 800;
+
+  // How long movement must stay "strong" before we consider we've started a rep
+  const MIN_STRONG_DURATION = 120; // ms
+  // ============================================================
+
+  let listening = false;
+  let repCount = 0;
+
+  let lastRepTime = 0;
+  let strongMovementStart = null;
+  let inRep = false;
+
+  let motionHandler = null;
+  let audioCtx = null;
+
+  const repCountEl = document.getElementById('repCount');
+  const statusEl = document.getElementById('status');
+  const statusSubEl = document.getElementById('statusSub');
+  const metricsEl = document.getElementById('metrics');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+
+  function setStatus(text, type = 'ok', subText = '') {
+    statusEl.textContent = text;
+    statusEl.className = 'status ' +
+      (type === 'ok' ? 'status-ok' :
+       type === 'warn' ? 'status-warn' : 'status-err');
+    statusSubEl.textContent = subText;
+  }
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  }
+
+  function beep(durationMs = 150, frequency = 880) {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.frequency.value = frequency;
+    osc.type = 'sine';
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.4, now + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+
+    osc.start(now);
+    osc.stop(now + durationMs / 1000 + 0.05);
+  }
+
+  function computeNetAccel(event) {
+    const acc = event.accelerationIncludingGravity || event.acceleration;
+    if (!acc) return null;
+
+    const ax = acc.x || 0;
+    const ay = acc.y || 0;
+    const az = acc.z || 0;
+
+    const mag = Math.sqrt(ax * ax + ay * ay + az * az);
+    // approximate "extra" acceleration beyond gravity
+    const net = Math.abs(mag - 9.81);
+
+    return { net, mag };
+  }
+
+  function onMotion(event) {
+    if (!listening) return;
+
+    const t = Date.now();
+    const accel = computeNetAccel(event);
+    if (!accel) return;
+
+    const net = accel.net;
+    const mag = accel.mag;
+
+    // Update on-screen metrics occasionally
+    if (t % 5 === 0) {
+      metricsEl.textContent = `Current movement: net=${net.toFixed(2)} m/s²  |  total=${mag.toFixed(2)} m/s²`;
+    }
+
+    const strong = net > MOVEMENT_THRESHOLD;
+
+    if (strong) {
+      if (strongMovementStart === null) {
+        strongMovementStart = t;
+      }
+      const duration = t - strongMovementStart;
+
+      if (!inRep &&
+          duration > MIN_STRONG_DURATION &&
+          t - lastRepTime > MIN_REP_INTERVAL) {
+
+        inRep = true;
+        lastRepTime = t;
+        repCount++;
+        repCountEl.textContent = repCount.toString();
+        beep();
+        setStatus('Rep detected!', 'ok', `Total: ${repCount}`);
+      }
+    } else {
+      strongMovementStart = null;
+      // reset rep state when movement calms down
+      if (inRep && net < MOVEMENT_THRESHOLD * 0.5) {
+        inRep = false;
+      }
+    }
+  }
+
+  function startListening() {
+    if (listening) return;
+
+    motionHandler = onMotion;
+    window.addEventListener('devicemotion', motionHandler);
+    listening = true;
+    setStatus('Listening for pull-ups…', 'ok', 'You can now put the phone in your pocket and start.');
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+  }
+
+  function stopListening() {
+    if (!listening) return;
+    window.removeEventListener('devicemotion', motionHandler);
+    listening = false;
+    motionHandler = null;
+    inRep = false;
+    strongMovementStart = null;
+    setStatus('Stopped.', 'warn', 'Tap Start to listen again.');
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
+  async function requestMotionPermissionIfNeeded() {
+    // iOS 13+ requires explicit permission for motion
+    const DeviceMotionEventRef = window.DeviceMotionEvent;
+    if (DeviceMotionEventRef && typeof DeviceMotionEventRef.requestPermission === 'function') {
+      try {
+        const response = await DeviceMotionEventRef.requestPermission();
+        if (response === 'granted') {
+          return true;
+        } else {
+          setStatus('Motion permission denied.', 'err',
+            'Go to Settings > Safari > Motion & Orientation Access, and enable it.');
+          return false;
+        }
+      } catch (err) {
+        console.error(err);
+        setStatus('Unable to request motion permission.', 'err', String(err));
+        return false;
+      }
+    } else {
+      // Non-iOS or older: if devicemotion exists, we assume allowed
+      if ('DeviceMotionEvent' in window) {
+        return true;
+      }
+      setStatus('Device motion not supported on this browser.', 'err');
+      return false;
+    }
+  }
+
+  startBtn.addEventListener('click', async () => {
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      try {
+        await audioCtx.resume();
+      } catch (e) {
+        console.warn('Could not resume audio context', e);
+      }
+    }
+
+    const ok = await requestMotionPermissionIfNeeded();
+    if (!ok) return;
+
+    if (!('DeviceMotionEvent' in window)) {
+      setStatus('Device motion not supported on this device.', 'err');
+      return;
+    }
+
+    startListening();
+  });
+
+  stopBtn.addEventListener('click', () => {
+    stopListening();
+  });
+
+  // Just in case user leaves the page
+  window.addEventListener('pagehide', stopListening);
+  window.addEventListener('blur', () => {
+    // optional: auto-stop when tab loses focus
+    stopListening();
+  });
+</script>
+</body>
+</html>
