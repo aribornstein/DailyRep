@@ -5,24 +5,24 @@ const $ = (id) => document.getElementById(id);
 
 const EXERCISES = {
   pushups: {
-    name: 'Push-ups', icon: 'body-outline', counting: 'tap',
+    name: 'Push-ups', icon: 'body-outline', counting: 'tap', milestones: [25, 50, 100],
     defaults: { startMax: 30, goalMax: 100, baseRestSeconds: 90, minRestSeconds: 45, maxRestSeconds: 240 },
     howTo: 'Put the phone under your face and tap it with your nose or chin on each rep.'
   },
   pullups: {
-    name: 'Pull-ups', icon: 'barbell-outline', counting: 'motion', motion: 'vertical',
+    name: 'Pull-ups', icon: 'barbell-outline', counting: 'motion', motion: 'vertical', milestones: [5, 10, 20],
     defaults: { startMax: 3, goalMax: 8, baseRestSeconds: 150, minRestSeconds: 90, maxRestSeconds: 300 },
     howTo: 'Phone in a front pocket, screen on. Hang still for a second, then pull. Reps count at the top.',
     readyHint: 'Hang still to start counting'
   },
   squats: {
-    name: 'Squats', icon: 'walk-outline', counting: 'motion', motion: 'vertical',
+    name: 'Squats', icon: 'walk-outline', counting: 'motion', motion: 'vertical', milestones: [25, 50, 100],
     defaults: { startMax: 20, goalMax: 60, baseRestSeconds: 75, minRestSeconds: 45, maxRestSeconds: 180 },
     howTo: 'Hold the phone out at chest height. Stand still, then squat to parallel and stand tall. Reps count when you are back up.',
     readyHint: 'Stand still to start counting'
   },
   situps: {
-    name: 'Sit-ups', icon: 'accessibility-outline', counting: 'motion', motion: 'chest',
+    name: 'Sit-ups', icon: 'accessibility-outline', counting: 'motion', motion: 'chest', milestones: [25, 50, 100],
     defaults: { startMax: 15, goalMax: 50, baseRestSeconds: 75, minRestSeconds: 45, maxRestSeconds: 180 },
     howTo: 'Hold the phone flat against your chest with both hands. Lie back, then sit all the way up. Reps count at the top.',
     readyHint: 'Lie back to start counting'
@@ -120,11 +120,26 @@ function sanitizeWorkout(w) {
   if (!w || typeof w !== 'object' || typeof w.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(w.date)) return null;
   if (!Array.isArray(w.sets)) return null;
   const sets = w.sets.slice(0, 10).map((r) => clampInt(r, 0, 9999));
-  return { date: w.date, day: clampInt(w.day, 1, 365), sets, total: sets.reduce((a, b) => a + b, 0) };
+  const out = { date: w.date, day: clampInt(w.day, 1, 365), sets, total: sets.reduce((a, b) => a + b, 0) };
+  if (typeof w.completed === 'boolean') out.completed = w.completed;
+  if (typeof w.partial === 'boolean') out.partial = w.partial;
+  if (Number.isFinite(w.at) && w.at > 0) out.at = w.at;
+  return out;
 }
 function loadWorkouts(ex = activeExercise) {
   const arr = readJSON(key('workouts', ex), []);
-  return Array.isArray(arr) ? arr.map(sanitizeWorkout).filter(Boolean) : [];
+  if (!Array.isArray(arr)) return [];
+  let settings = null;
+  return arr.map(sanitizeWorkout).filter(Boolean).map((w) => {
+    // Workouts saved before completion was recorded: derive it from the plan.
+    if (w.completed === undefined || w.partial === undefined) {
+      settings = settings || loadSettings(ex);
+      const plan = getDayPlan(w.day, settings);
+      if (w.partial === undefined) w.partial = w.sets.length < plan.sets.length || w.sets.some((r) => r === 0);
+      if (w.completed === undefined) w.completed = !w.partial && w.sets.every((r, i) => r >= plan.sets[i]);
+    }
+    return w;
+  });
 }
 const saveWorkouts = (arr, ex = activeExercise) => localStorage.setItem(key('workouts', ex), JSON.stringify(arr));
 
@@ -170,19 +185,61 @@ function statusForWorkout(w, plan) {
   return { label: 'Below', color: 'danger' };
 }
 
-function allWorkoutDates() {
-  const dates = new Set();
-  for (const ex of Object.keys(EXERCISES)) for (const w of loadWorkouts(ex)) if (w.total > 0) dates.add(w.date);
-  return dates;
+// ---------------------------------------------------------------------------
+// Engagement: weekly goal, achievements, recaps (logic in js/engagement.js)
+// ---------------------------------------------------------------------------
+const GOAL_KEY = 'dailyrep:weekly_goal_v1';
+const ACH_KEY = 'dailyrep:achievements_v1';
+const RECAP_KEY = 'dailyrep:recap_v1';
+const MOTIVATION_KEY = 'dailyrep:motivation_v1';
+
+const loadGoalState = () => Engagement.normalizeGoalState(readJSON(GOAL_KEY, null));
+const saveGoalState = (s) => localStorage.setItem(GOAL_KEY, JSON.stringify({ version: 1, history: s.history, freeze: s.freeze }));
+const loadAwarded = () => Engagement.normalizeAwarded(readJSON(ACH_KEY, null));
+const saveAwarded = (s) => localStorage.setItem(ACH_KEY, JSON.stringify(s));
+
+function allByExercise() {
+  const out = {};
+  for (const ex of Object.keys(EXERCISES)) out[ex] = loadWorkouts(ex);
+  return out;
 }
 
-function currentStreak(dates) {
-  const d = new Date();
-  if (!dates.has(isoToday(d))) d.setDate(d.getDate() - 1);
-  let n = 0;
-  while (dates.has(isoToday(d))) { n += 1; d.setDate(d.getDate() - 1); }
-  return n;
+function achievementDefs() {
+  const meta = {};
+  for (const [ex, cfg] of Object.entries(EXERCISES)) {
+    const s = loadSettings(ex);
+    meta[ex] = { name: cfg.name, goalMax: s.goalMax, totalDays: s.totalDays, milestones: cfg.milestones };
+  }
+  return Engagement.achievementDefs(meta);
 }
+
+function engagementContext(byEx = allByExercise()) {
+  const maxSingles = {};
+  const totalDays = {};
+  for (const ex of Object.keys(EXERCISES)) {
+    maxSingles[ex] = loadMaxSingle(ex);
+    totalDays[ex] = loadSettings(ex).totalDays;
+  }
+  return Engagement.buildContext(byEx, { goalState: loadGoalState(), today: isoToday(), maxSingles, totalDays });
+}
+
+// retro: earned by data that already existed (startup, import), so stored undated and never celebrated.
+function checkAchievements({ retro = false } = {}) {
+  const current = loadAwarded();
+  const results = Engagement.evaluate(achievementDefs(), engagementContext());
+  const { state, newly } = Engagement.award(current, results, { now: Date.now(), retro });
+  if (newly.length || !current.initialized) saveAwarded(state);
+  return newly;
+}
+
+function lastTrainingDateBefore(dates, iso) {
+  let last = null;
+  for (const d of dates) if (d < iso && (!last || d > last)) last = d;
+  return last;
+}
+
+const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const formatDate = (iso, opts = { month: 'short', day: 'numeric' }) => Engagement.parseISO(iso).toLocaleDateString(undefined, opts);
 
 // ---------------------------------------------------------------------------
 // DOM helpers
@@ -586,31 +643,153 @@ function finishSession({ partial = false } = {}) {
   const plan = getDayPlan(session.day, settings);
   const success = sets.every((rep, idx) => rep >= plan.sets[idx]);
 
-  if (total > 0) saveWorkouts(upsertWorkout(loadWorkouts(ex), { date: session.date, day: session.day, sets, total }), ex);
+  if (total === 0) {
+    renderAll();
+    dismissOverlay($('trainingModal'));
+    toast('Session ended');
+    return;
+  }
+
+  const today = isoToday();
+  const before = allByExercise();
+  const datesBefore = Engagement.trainingDates(before);
+  const weekBefore = Engagement.consistency(datesBefore, loadGoalState(), today).current;
+  const prior = before[ex].filter((w) => !(w.date === session.date && w.day === session.day));
+  const prevBest = Math.max(loadMaxSingle(ex), 0, ...prior.map(Engagement.bestOf));
+  const workout = { date: session.date, day: session.day, sets, total, completed: success, partial: partial && !success, at: Date.now() };
+
+  saveWorkouts(upsertWorkout(loadWorkouts(ex), workout), ex);
   if (success && loadProgressDay(ex) === session.day) setProgressDay(session.day + 1, ex);
   const best = Math.max(...sets);
   if (best > loadMaxSingle(ex)) saveMaxSingle(best, ex);
+  const newly = checkAchievements();
+
+  const cons = Engagement.consistency(Engagement.trainingDates(allByExercise()), loadGoalState(), today);
+  const prev = Engagement.previousComparable(prior, workout);
+  const last = lastTrainingDateBefore(datesBefore, today);
+  const planMilestone = [100, 75, 50, 25].find((p) => newly.some((d) => d.key === (p === 100 ? `plan-complete:${ex}` : `plan-${p}:${ex}`))) || 0;
+  const newBest = prevBest > 0 && best > prevBest ? best : 0;
+  const message = Engagement.encouragement({
+    kind: 'finish',
+    exerciseName: EXERCISES[ex].name,
+    total,
+    setCount: sets.length,
+    day: session.day,
+    completed: success,
+    partial: workout.partial,
+    firstWorkout: Engagement.allWorkouts(before).length === 0,
+    newBest,
+    weeklyJustMet: !weekBefore.met && cons.current.met,
+    planMilestone,
+    daysSinceLast: last ? Engagement.daysBetween(last, today) : null,
+    weekDays: cons.current.days,
+    delta: prev ? total - prev.total : null,
+    lastKey: readJSON(MOTIVATION_KEY, {})?.lastKey
+  });
+  localStorage.setItem(MOTIVATION_KEY, JSON.stringify({ lastKey: message.key }));
 
   renderAll();
-  dismissOverlay($('trainingModal'));
-  haptics(150);
-  if (total === 0) return toast('Session ended');
-  toast(success ? `Day ${session.day} complete! ${total} reps` : partial ? `Saved ${total} reps` : `Saved ${total} reps. Repeat this day next time.`, 2400);
-  if (success) speak(MOTIVATION_LINES[Math.floor(Math.random() * MOTIVATION_LINES.length)]);
+  haptics(success ? [60, 40, 120] : 120);
+  const data = { ex, settings, plan, workout, best, prevBest, newBest, prev, cons, weeklyJustMet: !weekBefore.met && cons.current.met, newly, message, planMilestone, newDay: !datesBefore.has(today) };
+  Promise.resolve(dismissOverlay($('trainingModal'))).finally(() => showCelebration(data));
 }
 
-const MOTIVATION_LINES = [
-  "You showed up. That's the win.",
-  'Stronger than yesterday.',
-  'Progress beats perfection.',
-  'Reps done. Confidence earned.',
-  'Discipline just paid interest.',
-  "You didn't quit. That matters.",
-  'This is how consistency looks.',
-  'Your future self approves.',
-  'Effort compounds.',
-  'Done is powerful.'
-];
+// ---------------------------------------------------------------------------
+// Celebration screen (once per saved workout; only reachable from finishSession)
+// ---------------------------------------------------------------------------
+function animateBar(fill, from, to) {
+  fill.style.width = `${Math.round(from * 100)}%`;
+  if (prefersReducedMotion()) { fill.style.width = `${Math.round(to * 100)}%`; return; }
+  requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = `${Math.round(Math.min(1, to) * 100)}%`; }));
+}
+
+function progressBlock(label, value, from, to, ariaLabel) {
+  const fill = el('div', { class: 'progressFill' });
+  const block = el('div', { class: 'celebrateBlock' },
+    el('div', { class: 'cardHead' }, el('span', { class: 'eyebrow', text: label }), el('strong', { text: value })),
+    el('div', { class: 'progressTrack', role: 'progressbar', 'aria-label': ariaLabel, 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(Math.min(1, to) * 100)) }, fill));
+  return { block, run: () => animateBar(fill, from, to) };
+}
+
+function launchConfetti(host) {
+  if (prefersReducedMotion()) return;
+  const layer = el('div', { class: 'confetti', 'aria-hidden': 'true' });
+  const colors = ['#ff9500', '#30d158', '#0a84ff', '#ffd60a', '#ff375f'];
+  for (let i = 0; i < 28; i += 1) {
+    layer.append(el('span', { style: `left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${(Math.random() * 0.4).toFixed(2)}s;transform:rotate(${Math.round(Math.random() * 360)}deg)` }));
+  }
+  host.append(layer);
+  setTimeout(() => layer.remove(), 2600);
+}
+
+async function showCelebration(d) {
+  const { ex, settings, plan, workout, best, prevBest, newBest, prev, cons, newly, message } = d;
+  const exName = EXERCISES[ex].name;
+  const lower = exName.toLowerCase();
+  const onTarget = workout.sets.filter((r, i) => r >= plan.sets[i]).length;
+  const title = workout.completed ? 'Workout Complete!' : workout.partial ? 'Session saved' : 'All sets done';
+  const icon = workout.completed ? 'trophy' : workout.partial ? 'heart' : 'checkmark-done';
+
+  const shownBest = Math.max(best, prevBest);
+  const goalBar = progressBlock('Goal progress', `${shownBest} / ${settings.goalMax}`,
+    Math.min(1, prevBest / settings.goalMax), Math.min(1, shownBest / settings.goalMax),
+    `Best set ${shownBest} of goal ${settings.goalMax}`);
+  const weekBar = progressBlock('Weekly goal', `${cons.current.days} / ${cons.current.goal} days`,
+    (cons.current.days - (d.newDay ? 1 : 0)) / cons.current.goal, cons.current.days / cons.current.goal,
+    `${cons.current.days} of ${cons.current.goal} training days this week`);
+
+  let compare;
+  if (workout.partial) compare = 'Partial sessions are saved but not compared.';
+  else if (prev) {
+    const delta = workout.total - prev.total;
+    compare = delta > 0 ? `+${delta} reps vs your last ${lower} workout (${formatDate(prev.date)})`
+      : delta === 0 ? `Same total as your last ${lower} workout (${formatDate(prev.date)})`
+        : `${Math.abs(delta)} fewer reps than your last ${lower} workout (${formatDate(prev.date)}). Some days are lighter.`;
+  } else compare = 'Your next session will have this one to compare against.';
+
+  const bestLine = newBest ? `New personal best: ${newBest} in one set (was ${prevBest})`
+    : prevBest === 0 ? `First recorded best set: ${best}` : `Best set today: ${best} (record ${prevBest})`;
+
+  const nextDay = loadProgressDay(ex);
+  const nextPlan = getDayPlan(nextDay, settings);
+  const streakText = cons.current.goal < 7
+    ? `Weekly streak: ${cons.streak} week${cons.streak === 1 ? '' : 's'}${cons.current.met ? ' · goal met this week' : ''}`
+    : `Active-day streak: ${Engagement.activeDayStreak(Engagement.trainingDates(allByExercise()), isoToday())} days`;
+
+  const body = el('div', { class: 'celebrate' },
+    el('div', { class: `celebrateBurst${workout.completed ? '' : ' soft'}`, 'aria-hidden': 'true' }, el('ion-icon', { name: icon })),
+    el('h1', { id: 'celebrateTitle', tabIndex: -1, text: title }),
+    el('p', { class: 'celebrateHeadline', text: message.headline }),
+    el('p', { class: 'muted celebrateMsg', text: message.message }),
+    el('div', { class: 'statGrid' },
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: String(workout.total) }), el('div', { class: 'k', text: `${lower}` })),
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: `${onTarget}/${plan.sets.length}` }), el('div', { class: 'k', text: 'sets on target' })),
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: String(workout.day) }), el('div', { class: 'k', text: `of ${settings.totalDays} days` }))),
+    el('div', { class: 'celebrateBlock' },
+      el('div', { class: `targetLine ${workout.completed ? 'ok' : ''}` },
+        el('ion-icon', { name: workout.completed ? 'checkmark-circle' : 'ellipse-outline', 'aria-hidden': 'true' }),
+        workout.completed ? `Target met: ${plan.total} reps across ${plan.sets.length} sets` : `Target ${plan.total} · you did ${workout.total}`),
+      el('div', { class: 'muted small', text: compare }),
+      el('div', { class: `small ${newBest ? 'accent' : 'muted'}`, text: bestLine })),
+    goalBar.block,
+    weekBar.block,
+    el('div', { class: 'muted small streakLine', text: streakText }),
+    newly.length ? el('div', { class: 'celebrateBlock' },
+      el('div', { class: 'eyebrow', text: newly.length === 1 ? 'Achievement unlocked' : `${newly.length} achievements unlocked` }),
+      el('div', { class: 'badgeRow' }, ...newly.map((a) => el('div', { class: 'miniBadge earned' }, el('ion-icon', { name: a.icon, 'aria-hidden': 'true' }), el('span', { text: a.name }))))) : null,
+    el('div', { class: 'celebrateBlock nextBlock' },
+      el('div', { class: 'eyebrow', text: workout.completed ? `Next: Day ${nextPlan.day}` : `Next time: Day ${nextPlan.day}` }),
+      el('div', { class: 'mono', text: `${nextPlan.sets.join(' · ')}  (${nextPlan.total})` })));
+
+  $('celebrateBody').replaceChildren(body);
+  const modal = $('celebrateModal');
+  await presentOverlay(modal);
+  $('celebrateTitle')?.focus();
+  goalBar.run();
+  weekBar.run();
+  if (newBest || newly.length || d.weeklyJustMet || d.planMilestone) launchConfetti(modal.querySelector('.celebrate'));
+  setTimeout(() => speak(`${title} ${message.message}`), 500);
+}
 
 // ---------------------------------------------------------------------------
 // Training UI
@@ -714,7 +893,17 @@ function endMaxTest(save) {
   if (save) {
     const best = loadMaxSingle();
     if (maxSession.count > best) saveMaxSingle(maxSession.count);
-    toast(maxSession.count > best ? `New record: ${maxSession.count}` : 'Saved');
+    let newly = [];
+    if (best > 0 && maxSession.count > best) {
+      const r = Engagement.awardKey(loadAwarded(), `personal-best:${activeExercise}`, Date.now());
+      if (r.added) {
+        saveAwarded(r.state);
+        newly.push(achievementDefs().find((a) => a.key === `personal-best:${activeExercise}`));
+      }
+    }
+    newly = newly.concat(checkAchievements());
+    if (newly.length) toast(newly.length === 1 ? `Achievement unlocked: ${newly[0].name}` : `${newly.length} achievements unlocked`, 2400);
+    else toast(maxSession.count > best ? `New record: ${maxSession.count}` : 'Saved');
     renderAll();
     renderRecords();
   }
@@ -753,32 +942,41 @@ function renderWorkoutView() {
   const day = loadProgressDay();
   const plan = getDayPlan(day, settings);
   const workouts = loadWorkouts();
-  const today = workouts.find((w) => w.date === isoToday());
+  const todayWorkout = workouts.find((w) => w.date === isoToday());
   const todayTotal = workouts.filter((w) => w.date === isoToday()).reduce((a, w) => a + w.total, 0);
 
   $('appTitleMain').textContent = ex.name;
   $('appTitleAccent').textContent = String(settings.goalMax);
   $('heroEyebrow').textContent = `Day ${day} of ${settings.totalDays}`;
-  $('heroTitle').textContent = day >= settings.totalDays && today ? 'Final day!' : `Today's ${ex.name.toLowerCase()}`;
+  $('heroTitle').textContent = day >= settings.totalDays && todayWorkout ? 'Final day!' : `Today's ${ex.name.toLowerCase()}`;
   $('targetMax').textContent = String(plan.targetMax);
   setRing($('goalRing'), plan.targetMax / settings.goalMax);
   $('toGo').textContent = String(Math.max(0, settings.goalMax - plan.targetMax));
   $('goalLabel').textContent = `to a ${settings.goalMax} rep max`;
   $('dayBar').style.width = `${Math.round(((day - 1) / Math.max(1, settings.totalDays - 1)) * 100)}%`;
 
-  if (today) {
+  if (todayWorkout) {
     $('todayStatus').textContent = `${todayTotal} reps`;
-    $('todayDetail').textContent = `Done today · ${today.sets.join(' / ')}`;
+    $('todayDetail').textContent = `Done today · ${todayWorkout.sets.join(' / ')}`;
   } else {
     $('todayStatus').textContent = `${plan.total} reps`;
     $('todayDetail').textContent = 'Today\'s target · 5 sets';
   }
   $('setRow').replaceChildren(...plan.sets.map((r, idx) => el('div', { class: `setChip${idx === 0 ? ' top' : ''}` }, String(r), el('small', { text: `SET ${idx + 1}` }))));
 
-  const dates = allWorkoutDates();
-  const streak = currentStreak(dates);
-  $('streakNum').textContent = `${streak} day${streak === 1 ? '' : 's'}`;
-  $('streakBadge').classList.toggle('cold', streak === 0);
+  const today = isoToday();
+  const byEx = allByExercise();
+  const dates = Engagement.trainingDates(byEx);
+  const goalState = loadGoalState();
+  const cons = Engagement.consistency(dates, goalState, today);
+  const dayStreak = Engagement.activeDayStreak(dates, today);
+  const wk = cons.current;
+  // Consistency (weeks) is the main habit metric unless the goal is every day.
+  const useWeeks = wk.goal < 7;
+  const streakVal = useWeeks ? cons.streak : dayStreak;
+  $('streakNum').textContent = useWeeks ? `${streakVal} wk${streakVal === 1 ? '' : 's'}` : `${streakVal} day${streakVal === 1 ? '' : 's'}`;
+  $('streakBadge').setAttribute('aria-label', useWeeks ? `Weekly streak: ${streakVal} weeks at your goal` : `Active-day streak: ${streakVal} days`);
+  $('streakBadge').classList.toggle('cold', streakVal === 0);
 
   const best = workouts.reduce((m, w) => Math.max(m, w.total), 0);
   const bestSet = Math.max(loadMaxSingle(), ...workouts.map((w) => Math.max(0, ...w.sets)));
@@ -786,19 +984,42 @@ function renderWorkoutView() {
   $('statBestTotal').textContent = best ? String(best) : '—';
   $('statLifetime').textContent = String(workouts.reduce((a, w) => a + w.total, 0));
 
-  const week = [];
-  const d = new Date();
-  d.setDate(d.getDate() - 6);
-  for (let k = 0; k < 7; k += 1) {
-    const iso = isoToday(d);
-    const isToday = k === 6;
+  $('weekGoalText').textContent = `${wk.days} / ${wk.goal}`;
+  $('weekGoalSub').textContent = wk.met ? 'Goal met this week' : `${wk.goal - wk.days} more training day${wk.goal - wk.days === 1 ? '' : 's'} to go`;
+  $('weekGoalBar').style.width = `${Math.round(Math.min(1, wk.days / wk.goal) * 100)}%`;
+  $('weekGoalTrack').setAttribute('aria-valuenow', String(Math.round(Math.min(1, wk.days / wk.goal) * 100)));
+  const lastFrozen = cons.lastWeek && cons.lastWeek.status === 'frozen';
+  $('streakDetail').textContent = [
+    `Weekly streak: ${cons.streak} wk${cons.streak === 1 ? '' : 's'}`,
+    `Active days in a row: ${dayStreak}`,
+    lastFrozen ? 'Streak freeze covered last week' : null
+  ].filter(Boolean).join(' · ');
+
+  $('weekDots').replaceChildren(...Engagement.weekDays(Engagement.weekStart(today)).map((iso) => {
     const doneDay = dates.has(iso);
-    week.push(el('div', { class: `dayDot${doneDay ? ' done' : ''}${isToday ? ' today' : ''}` },
-      d.toLocaleDateString(undefined, { weekday: 'narrow' }),
-      el('div', { class: 'd' }, doneDay ? el('ion-icon', { name: 'checkmark' }) : String(d.getDate()))));
-    d.setDate(d.getDate() + 1);
-  }
-  $('weekDots').replaceChildren(...week);
+    const label = `${formatDate(iso, { weekday: 'long' })}: ${doneDay ? 'trained' : iso > today ? 'upcoming' : 'rest'}`;
+    return el('div', { class: `dayDot${doneDay ? ' done' : ''}${iso === today ? ' today' : ''}${iso > today ? ' future' : ''}`, role: 'listitem', 'aria-label': label },
+      formatDate(iso, { weekday: 'narrow' }),
+      el('div', { class: 'd', 'aria-hidden': 'true' }, doneDay ? el('ion-icon', { name: 'checkmark' }) : String(Engagement.parseISO(iso).getDate())));
+  }));
+
+  const last = lastTrainingDateBefore(dates, today);
+  const msg = Engagement.encouragement({
+    kind: 'today',
+    doneToday: dates.has(today),
+    daysSinceLast: last ? Engagement.daysBetween(last, today) : null,
+    goal: wk.goal,
+    weekDays: wk.days,
+    weekMet: wk.met
+  });
+  $('todayMsg').textContent = msg.message;
+
+  renderAchievementsCard();
+
+  const prevWs = Engagement.addDays(Engagement.weekStart(today), -7);
+  const offered = readJSON(RECAP_KEY, {})?.offered;
+  const hadLastWeek = Engagement.allWorkouts(byEx).some((w) => w.date >= prevWs && w.date < Engagement.weekStart(today));
+  $('recapInvite').style.display = !session.active && offered !== prevWs && hadLastWeek ? '' : 'none';
 
   const preview = [];
   for (let k = day; k <= Math.min(settings.totalDays, day + 2); k += 1) {
@@ -809,7 +1030,7 @@ function renderWorkoutView() {
   }
   $('planPreview').replaceChildren(...preview);
 
-  $('startLabel').textContent = session.active ? 'Resume workout' : today ? 'Train again' : 'Start workout';
+  $('startLabel').textContent = session.active ? 'Resume workout' : todayWorkout ? 'Train again' : 'Start workout';
 }
 
 function renderHistoryView() {
@@ -868,6 +1089,117 @@ function renderRecords() {
   $('prGoalBadge').textContent = String(loadSettings().goalMax);
 }
 
+// ---------------------------------------------------------------------------
+// Achievements views
+// ---------------------------------------------------------------------------
+function visibleAchievements() {
+  const awarded = loadAwarded().awarded;
+  return Engagement.evaluate(achievementDefs(), engagementContext())
+    .filter((r) => !r.def.exercise || r.def.exercise === activeExercise)
+    .map((r) => ({ ...r, award: awarded[r.def.key] || null }));
+}
+
+function renderAchievementsCard() {
+  const list = visibleAchievements();
+  const earned = list.filter((r) => r.award).sort((a, b) => (b.award.at || 0) - (a.award.at || 0));
+  $('achCount').textContent = `${earned.length} / ${list.length}`;
+  $('achRecent').replaceChildren(...(earned.length
+    ? earned.slice(0, 4).map((r) => el('div', { class: 'miniBadge earned' }, el('ion-icon', { name: r.def.icon, 'aria-hidden': 'true' }), el('span', { text: r.def.name })))
+    : [el('div', { class: 'muted small', text: 'Finish a full workout to earn your first badge.' })]));
+}
+
+function renderAchievementsModal() {
+  const list = visibleAchievements();
+  const earnedCount = list.filter((r) => r.award).length;
+  $('achSummary').textContent = `${earnedCount} of ${list.length} earned · strength and plan badges shown for ${EXERCISES[activeExercise].name.toLowerCase()}`;
+  const sections = Engagement.CATEGORIES.map((cat) => {
+    const items = list.filter((r) => r.def.category === cat.id);
+    return el('section', { class: 'achSection' },
+      el('h2', { class: 'eyebrow', text: cat.name }),
+      el('div', { class: 'badgeGrid', role: 'list' }, ...items.map((r) => {
+        const earned = !!r.award;
+        const status = earned
+          ? (r.award.at ? `Earned ${new Date(r.award.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : 'Earned before tracking')
+          : (r.target > 1 ? `${r.current} / ${r.target}` : 'Not yet');
+        return el('div', { class: `badge ${earned ? 'earned' : 'locked'}`, role: 'listitem', 'aria-label': `${r.def.name}. ${r.def.desc}. ${earned ? status : `Locked, ${status}`}` },
+          el('div', { class: 'badgeIcon', 'aria-hidden': 'true' }, el('ion-icon', { name: earned ? r.def.icon : 'lock-closed-outline' })),
+          el('div', { class: 'badgeName', text: r.def.name }),
+          el('div', { class: 'badgeDesc', text: r.def.desc }),
+          !earned && r.target > 1 ? el('div', { class: 'progressTrack', 'aria-hidden': 'true' }, el('div', { class: 'progressFill', style: `width:${Math.round((r.current / r.target) * 100)}%` })) : null,
+          el('div', { class: 'badgeStatus', text: status }));
+      })));
+  });
+  $('achList').replaceChildren(...sections);
+}
+
+// ---------------------------------------------------------------------------
+// Weekly recap
+// ---------------------------------------------------------------------------
+let recapWs = null;
+
+function markRecapOffered() {
+  const prevWs = Engagement.addDays(Engagement.weekStart(isoToday()), -7);
+  localStorage.setItem(RECAP_KEY, JSON.stringify({ version: 1, offered: prevWs }));
+  $('recapInvite').style.display = 'none';
+}
+
+function renderRecap(ws) {
+  recapWs = ws;
+  const curWs = Engagement.weekStart(isoToday());
+  const defs = achievementDefs();
+  const s = Engagement.weekSummary(allByExercise(), ws, { goalState: loadGoalState(), awarded: loadAwarded().awarded });
+  const name = (ex) => EXERCISES[ex]?.name.toLowerCase() || ex;
+  const inProgress = ws === curWs;
+  $('recapRange').textContent = `${formatDate(ws)} – ${formatDate(s.end)}${inProgress ? ' · so far' : ''}`;
+  $('recapNext').disabled = ws >= curWs;
+
+  const maxReps = Math.max(1, ...s.timeline.map((t) => t.reps));
+  const closing = Engagement.encouragement({ kind: 'recap', days: s.days, met: s.met });
+  const goalText = s.met ? `Weekly goal met: ${s.days} of ${s.goal} days` : `${s.days} of ${s.goal} training days${inProgress ? ' so far' : ''}`;
+  const highlight = s.prs.length
+    ? `New best: ${s.prs[0].reps} ${name(s.prs[0].exercise)} in one set`
+    : s.best ? `Best set: ${s.best.reps} ${name(s.best.exercise)}` : 'No sessions logged this week';
+  let compare = null;
+  if (s.previous && s.sessions) {
+    const dr = s.totalReps - s.previous.totalReps;
+    const dd = s.days - s.previous.days;
+    compare = `Training volume vs the week before: ${dr >= 0 ? '+' : ''}${dr} reps, ${dd >= 0 ? '+' : ''}${dd} training day${Math.abs(dd) === 1 ? '' : 's'}.`;
+  }
+  const achNames = s.achievements.map((k) => defs.find((d) => d.key === k)?.name).filter(Boolean);
+
+  $('recapBody').replaceChildren(
+    el('div', { class: 'recapHero' },
+      el('div', { class: 'bigNumber', text: String(s.days) }),
+      el('div', { class: 'eyebrow', text: `training day${s.days === 1 ? '' : 's'}` }),
+      el('div', { class: `goalChip ${s.met ? 'met' : ''}` },
+        el('ion-icon', { name: s.met ? 'checkmark-circle' : 'ellipse-outline', 'aria-hidden': 'true' }), goalText)),
+    el('div', { class: 'statGrid' },
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: String(s.totalReps) }), el('div', { class: 'k', text: 'total reps' })),
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: String(s.sessions) }), el('div', { class: 'k', text: s.partialSessions ? `sessions (${s.partialSessions} partial)` : 'sessions' })),
+      el('div', { class: 'stat' }, el('div', { class: 'v', text: String(s.exercises.length) }), el('div', { class: 'k', text: 'exercises' }))),
+    el('section', { class: 'card' },
+      el('div', { class: 'eyebrow', text: 'Highlight' }),
+      el('div', { class: 'recapHighlight', text: highlight }),
+      s.prs.length > 1 ? el('div', { class: 'muted small', text: s.prs.slice(1).map((p) => `Also: ${p.reps} ${name(p.exercise)} (was ${p.prev})`).join(' · ') }) : null,
+      s.prs[0] ? el('div', { class: 'muted small', text: `Previous best was ${s.prs[0].prev}.` }) : null,
+      s.exercises.length ? el('div', { class: 'muted small', text: `Trained: ${s.exercises.map((e) => EXERCISES[e]?.name || e).join(', ')}` }) : null),
+    el('section', { class: 'card' },
+      el('div', { class: 'eyebrow', text: 'Daily reps' }),
+      el('div', { class: 'timeline', role: 'list' }, ...s.timeline.map((t) => el('div', { class: 'tlDay', role: 'listitem', 'aria-label': `${formatDate(t.date, { weekday: 'long' })}: ${t.reps ? `${t.reps} reps` : 'rest'}` },
+        el('div', { class: 'tlBarWrap', 'aria-hidden': 'true' }, el('div', { class: `tlBar${t.reps ? ' on' : ''}`, style: `height:${Math.max(4, Math.round((t.reps / maxReps) * 100))}%` })),
+        el('div', { class: 'tlLabel', 'aria-hidden': 'true', text: formatDate(t.date, { weekday: 'narrow' }) }))))),
+    achNames.length ? el('section', { class: 'card' },
+      el('div', { class: 'eyebrow', text: 'Achievements unlocked' }),
+      el('div', { class: 'badgeRow' }, ...achNames.map((n) => el('div', { class: 'miniBadge earned' }, el('ion-icon', { name: 'ribbon-outline', 'aria-hidden': 'true' }), el('span', { text: n }))))) : null,
+    compare ? el('p', { class: 'muted small', text: compare }) : null,
+    el('p', { class: 'recapClosing', text: closing.message }));
+}
+
+function openRecap(ws) {
+  renderRecap(ws);
+  presentOverlay($('recapModal'));
+}
+
 function syncSettingsForm() {
   const s = loadSettings();
   $('settingsTitle').textContent = `${EXERCISES[activeExercise].name} settings`;
@@ -880,6 +1212,14 @@ function syncSettingsForm() {
   $('beepToggle').checked = s.soundOn;
   $('voiceToggle').checked = s.voiceOn;
   $('sensitivityItem').style.display = EXERCISES[activeExercise].counting === 'motion' ? '' : 'none';
+  const gs = loadGoalState();
+  const curWs = Engagement.weekStart(isoToday());
+  const pending = gs.history.find((h) => h.from > curWs);
+  $('weeklyGoal').value = String(pending ? pending.goal : Engagement.goalForWeek(gs, curWs));
+  $('weeklyGoalNote').textContent = pending
+    ? `This week stays at ${Engagement.goalForWeek(gs, curWs)} days; ${pending.goal} days starts ${formatDate(pending.from, { weekday: 'long', month: 'short', day: 'numeric' })}.`
+    : 'Counts days you train any exercise. Changes made after training this week start next Monday.';
+  $('freezeToggle').checked = gs.freeze;
 }
 
 function renderAll() {
@@ -954,7 +1294,13 @@ function exportData() {
       maxSingle: loadMaxSingle(ex)
     };
   }
-  const blob = new Blob([JSON.stringify({ app: 'dailyrep', version: 2, exportedAt: new Date().toISOString(), exercises }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({
+    app: 'dailyrep',
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    exercises,
+    engagement: { weeklyGoal: loadGoalState(), achievements: loadAwarded() }
+  }, null, 2)], { type: 'application/json' });
   const a = el('a', { href: URL.createObjectURL(blob), download: `dailyrep-backup-${isoToday()}.json` });
   document.body.appendChild(a);
   a.click();
@@ -988,6 +1334,11 @@ function importPayload(payload) {
     if (Number.isFinite(data.progressDay)) setProgressDay(data.progressDay, ex);
     n += 1;
   }
+  // Engagement data is optional; older backups simply don't have it.
+  const eng = payload && typeof payload.engagement === 'object' ? payload.engagement : null;
+  if (eng?.weeklyGoal) saveGoalState(Engagement.normalizeGoalState(eng.weeklyGoal));
+  if (eng?.achievements) saveAwarded(Engagement.mergeAwarded(loadAwarded(), eng.achievements));
+  if (n || eng) checkAchievements({ retro: true });
   return n;
 }
 
@@ -1025,8 +1376,25 @@ window.addEventListener('load', async () => {
   await Promise.all(['ion-modal', 'ion-toast', 'ion-alert'].map((t) => customElements.whenDefined(t)));
   const trainingModal = $('trainingModal');
 
+  // Badges already earned by existing history are recorded once, undated, with a single summary toast.
+  const firstEval = !loadAwarded().initialized;
+  const retro = checkAchievements({ retro: true });
   renderAll();
+  if (firstEval && retro.length) toast(`${retro.length} achievement${retro.length === 1 ? '' : 's'} earned from your history`, 2400);
   $('tabSeg').addEventListener('ionChange', (e) => switchTab(e.detail.value));
+
+  $('achOpenBtn').addEventListener('click', () => { renderAchievementsModal(); presentOverlay($('achModal')); });
+  $('closeAch').addEventListener('click', () => dismissOverlay($('achModal')));
+  $('celebrateDone').addEventListener('click', () => dismissOverlay($('celebrateModal')));
+  $('celebrateModal').addEventListener('ionModalDidDismiss', () => { stopSpeech(); $('startTrainingBtn').focus?.(); });
+  const prevWeek = () => Engagement.addDays(Engagement.weekStart(isoToday()), -7);
+  $('recapViewBtn').addEventListener('click', () => { markRecapOffered(); openRecap(prevWeek()); });
+  $('recapDismissBtn').addEventListener('click', markRecapOffered);
+  $('weekRecapBtn').addEventListener('click', () => openRecap(Engagement.weekStart(isoToday())));
+  $('historyRecapBtn').addEventListener('click', () => openRecap(prevWeek()));
+  $('recapPrev').addEventListener('click', () => renderRecap(Engagement.addDays(recapWs, -7)));
+  $('recapNext').addEventListener('click', () => renderRecap(Engagement.addDays(recapWs, 7)));
+  $('closeRecap').addEventListener('click', () => dismissOverlay($('recapModal')));
 
   $('settingsBtn').addEventListener('click', () => { syncSettingsForm(); presentOverlay($('settingsModal')); });
   $('closeSettings').addEventListener('click', () => dismissOverlay($('settingsModal')));
@@ -1118,7 +1486,19 @@ window.addEventListener('load', async () => {
       voiceOn: $('voiceToggle').checked
     });
     setProgressDay(loadProgressDay());
-    toast('Settings saved');
+    const gs = loadGoalState();
+    const goal = Number($('weeklyGoal').value);
+    let next = { ...gs, freeze: $('freezeToggle').checked };
+    let goalNote = '';
+    if (Number.isInteger(goal) && goal >= 2 && goal <= 7) {
+      const today = isoToday();
+      const trained = [...Engagement.trainingDates(allByExercise())].some((d) => d >= Engagement.weekStart(today) && d <= today);
+      const r = Engagement.setWeeklyGoal(next, goal, today, trained);
+      next = r.state;
+      if (goal !== Engagement.goalForWeek(gs, Engagement.weekStart(today)) && r.effectiveFrom > Engagement.weekStart(today)) goalNote = ' New weekly goal starts Monday.';
+    }
+    saveGoalState(next);
+    toast(`Settings saved.${goalNote}`);
     renderAll();
     dismissOverlay($('settingsModal'));
   });
@@ -1150,6 +1530,8 @@ window.addEventListener('load', async () => {
     { text: 'Cancel', role: 'cancel' },
     { text: 'Wipe', role: 'destructive', handler: () => {
       ['settings', 'start_date', 'workouts', 'max_single', 'progress_day'].forEach((k) => localStorage.removeItem(key(k)));
+      // Global badges (first workout, weekly goals) are kept; this exercise's badges reset with its data.
+      saveAwarded(Engagement.removeExerciseAwards(loadAwarded(), activeExercise));
       syncSettingsForm();
       renderAll();
       toast('Wiped');

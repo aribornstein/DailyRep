@@ -18,7 +18,12 @@ Each exercise follows a linear plan from your current max to a goal max (for exa
 - **Adaptive rest:** shorter if you beat the target, longer if you fell short. +30 s / skip buttons and a spoken 5-second countdown.
 - **Motion rep counting** for pull-ups, squats and sit-ups, with a live status/level meter and per-exercise sensitivity.
 - **Survives the phone locking:** the screen is kept awake during a workout, and the session is saved after every rep (details below).
-- **Progress:** streak, 7-day activity, best set, best day, lifetime reps, history with goal status, and a max-test mode.
+- **Progress:** best set, best day, lifetime reps, history with goal status, and a max-test mode.
+- **Weekly goal and flexible streaks:** pick 2–7 training days per week. Rest days never count against you. Details below.
+- **Celebration screen** after every saved workout: what you did, honest comparisons, goal and weekly progress, new badges, and the next workout.
+- **Achievements:** badges for getting started, strength, consistency and plan milestones.
+- **Weekly recap:** a "week in review" offered once at the start of each new week, with earlier weeks browsable.
+- **Personalized encouragement** based on your actual history instead of random quotes.
 - **Data stays on the device:** stored in `localStorage`. Export/import all exercises as JSON.
 
 ## Running it
@@ -70,16 +75,74 @@ Detection is in [js/rep-detector.js](js/rep-detector.js). It is pure logic with 
   - **Low:** fewer false reps.
   - **High:** catches slow pull-ups, shallow squats and partial sit-ups.
 
+## Engagement and motivation
+
+The goal is to make you proud of your effort and aware of real improvement, without guilt or pressure to overtrain. All the logic is in [js/engagement.js](js/engagement.js) (pure functions, tested in Node). [js/app.js](js/app.js) only connects it to storage and the UI.
+
+### Weekly goal and streaks
+- **Weekly goal:** 2–7 training days per week (default 3), set in Settings.
+  - A training day is any date with at least one saved workout of any exercise. Push-ups and squats on the same day count as one day.
+  - Weeks run Monday to Sunday in local time.
+- **Weekly streak:** consecutive completed weeks in which you met your goal. It is the main streak shown when your goal is under 7 days.
+  - The current week can only add to the streak; it never breaks it before Sunday is over.
+- **Active-day streak:** consecutive calendar days with training. It is shown as a detail, and becomes the main streak if your goal is every day.
+- **Goal changes never rewrite the past:** every week is judged against the goal that was in force that week.
+  - A change made after you've already trained this week starts next Monday, so lowering the goal can't instantly "complete" a week.
+- **Streak freeze** (on by default, can be turned off):
+  - After 3 weeks in a row at your goal, one missed week won't reset your weekly streak.
+  - That week is never counted as met, and never earns a badge.
+  - You need another 3 weeks at your goal before a freeze can be used again.
+- Streaks are calculated from workout history every time, not stored as counters.
+
+### Achievements
+- **Getting started:** First Workout, Getting Started, Building Momentum, Committed. These count *full* workouts only (all sets on target).
+- **Strength** (per exercise):
+  - Set milestones: 25/50/100 for push-ups, squats and sit-ups; 5/10/20 for pull-ups.
+  - Personal Best: beat an earlier best set.
+  - Goal Crusher: reach your goal in one set.
+- **Consistency:** Strong Week, Two Strong Weeks, Consistency Champion. These need consecutive met weeks; frozen weeks don't count.
+- **Plan milestones** (per exercise):
+  - Quarter Way, Halfway There and Almost There count distinct plan days you *successfully completed*, so jumping ahead in the plan doesn't count.
+  - Plan Complete also needs at least 75% of days done.
+- **Badges already earned from existing history** are recorded once on first launch, with no date ("earned before tracking") and a single summary toast instead of many celebrations.
+- **Earned badges are kept** if you delete a workout. Wiping an exercise removes that exercise's badges and keeps the global ones.
+
+### Celebration, recap and encouragement
+- **Celebration:** shown exactly once per saved workout, from `finishSession()`; never replayed from history. Partial sessions get partial wording and are not compared.
+  - Comparisons are only with your previous non-partial workout of the same exercise, and only when one exists.
+  - "New personal best" is only claimed when a set beats an earlier recorded best.
+  - Confetti appears only for real milestones and is skipped when the system asks for reduced motion.
+- **Weekly recap:** training days, goal status, total reps, sessions (with partial ones noted), exercises, best set, personal bests, badges earned that week, and a day-by-day chart.
+  - Week-over-week change is labeled as training volume, never as strength.
+  - The invitation appears on the Today screen (never during a workout), at most once per completed week.
+- **Encouragement:** chosen from facts such as first workout, new best, weekly goal met, plan milestone, partial session, returning after 7+ days, or comparison with the last workout.
+  - It avoids repeating the previous message and never uses guilt wording (this is tested).
+  - Voice follows the existing Voice setting.
+
+### Stored data (all versioned; existing keys untouched)
+| Key | Contents |
+|---|---|
+| `dailyrep:weekly_goal_v1` | `{ version, history: [{ from: 'YYYY-MM-DD', goal }], freeze }` |
+| `dailyrep:achievements_v1` | `{ version, initialized, awarded: { key: { at: ms \| null, retro } } }` |
+| `dailyrep:recap_v1` | `{ version, offered: 'YYYY-MM-DD' }`: the last week whose recap was offered |
+| `dailyrep:motivation_v1` | `{ lastKey }`: avoids repeating the same message |
+
+- **Workout rows** gain optional `completed`, `partial` and `at` fields. Older rows get these values derived from the plan when loaded; the stored rows themselves aren't changed.
+- **Exports** include an `engagement` block.
+  - Importing merges badges (keeping the earliest real date) and restores the weekly goal.
+  - Backups without this block import as before, and their badges are evaluated as history.
+
 ## Project layout
 
 ```
 index.html            markup (Ionic web components from CDN)
 css/app.css           theme and layout
 js/app.js             app logic: plan, sessions, persistence, UI
+js/engagement.js      weekly goals, streaks, achievements, recaps, encouragement (browser + Node)
 js/rep-detector.js    accelerometer rep detection (browser + Node)
 service-worker.js     offline cache (app shell precache + CDN runtime cache)
 manifest.json         PWA manifest
-tests/                node:test unit tests for the detector
+tests/                node:test unit tests
 ```
 
 ## Tests
@@ -87,6 +150,16 @@ tests/                node:test unit tests for the detector
 ```sh
 node --test
 ```
+
+The engagement tests cover:
+- achievement eligibility, duplicate prevention, and badges earned from existing history
+- full vs partial workouts
+- weekly goals across exercises and several sessions on one day
+- rest days, Monday–Sunday weeks, year boundaries, and the in-progress week
+- goal changes and streak freezes
+- personal-best comparisons
+- malformed data and import merging
+- encouragement wording
 
 The detector tests generate physics-based synthetic sensor data with these conditions:
 - random phone orientations and sensor noise
@@ -116,9 +189,9 @@ The guiding constraint is to stay a client-side SPA: everything runs on the devi
 5. **Self-host Ionic and Ionicons** so the first load works offline and has no CDN dependency.
 
 ### Phase 2: Habit and motivation
-1. Streak freezes, weekly goals, and a weekly recap screen.
+1. ~~Streak freezes, weekly goals, and a weekly recap screen.~~ Done.
 2. Charts: target versus actual over time, estimated max trend, and volume per week (canvas/SVG, no library).
-3. Achievements: first 50-rep set, 30-day streak, plan complete, and similar.
+3. ~~Achievements~~ Done. Next: per-exercise weekly goals, and badges for max tests across exercises.
 4. Shareable progress cards, rendered to an image and sent through the Web Share API.
 5. Reminders:
    - Web Push on iOS 16.4+ for home-screen apps. This needs a small push sender, so it would be optional.

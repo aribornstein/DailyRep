@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dailyrep-v5';
+const CACHE_NAME = 'dailyrep-v6';
 const CDN_CACHE = 'dailyrep-cdn-v1';
 const ASSETS = [
   './',
@@ -6,6 +6,7 @@ const ASSETS = [
   './css/app.css',
   './js/app.js',
   './js/rep-detector.js',
+  './js/engagement.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',

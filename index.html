@@ -46,14 +46,25 @@
         <div id="viewWorkout" class="page">
           <div class="exerciseRow" id="exerciseRow" role="tablist" aria-label="Exercise"></div>
 
+          <section class="card invite" id="recapInvite" style="display:none" aria-labelledby="recapInviteTitle">
+            <div class="inviteIcon" aria-hidden="true"><ion-icon name="stats-chart"></ion-icon></div>
+            <div class="inviteText">
+              <div class="inviteTitle" id="recapInviteTitle">Your week in review is ready</div>
+              <div class="muted small">See last week's training at a glance.</div>
+            </div>
+            <ion-button size="small" id="recapViewBtn">View</ion-button>
+            <ion-button size="small" fill="clear" id="recapDismissBtn" aria-label="Dismiss weekly recap"><ion-icon slot="icon-only" name="close"></ion-icon></ion-button>
+          </section>
+
           <section class="card hero">
             <div class="heroTop">
               <div>
                 <div class="eyebrow" id="heroEyebrow">Day 1 of 100</div>
                 <div class="heroTitle" id="heroTitle">Today's workout</div>
               </div>
-              <div class="streakBadge" id="streakBadge"><ion-icon name="flame"></ion-icon><span id="streakNum">0</span></div>
+              <div class="streakBadge" id="streakBadge" role="status"><ion-icon name="flame" aria-hidden="true"></ion-icon><span id="streakNum">0</span></div>
             </div>
+            <p class="heroMsg" id="todayMsg"></p>
 
             <div class="heroBody">
               <div class="ringWrap">
@@ -90,9 +101,26 @@
             <div class="stat"><div class="v" id="statLifetime">0</div><div class="k">All-time</div></div>
           </div>
 
-          <section class="card">
-            <div class="cardHead"><h3>This week</h3><span class="eyebrow">All exercises</span></div>
-            <div class="weekDots" id="weekDots"></div>
+          <section class="card" aria-labelledby="weekGoalTitle">
+            <div class="cardHead">
+              <h3 id="weekGoalTitle">Weekly goal</h3>
+              <ion-button size="small" fill="clear" id="weekRecapBtn">Week in review</ion-button>
+            </div>
+            <div class="weekGoalRow">
+              <div class="weekGoalNum"><span id="weekGoalText">0 / 3</span> <span class="muted small">training days</span></div>
+              <div class="muted small" id="weekGoalSub"></div>
+            </div>
+            <div class="progressTrack" id="weekGoalTrack" role="progressbar" aria-label="Weekly goal progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progressFill" id="weekGoalBar"></div></div>
+            <div class="weekDots" id="weekDots" role="list" aria-label="This week, Monday to Sunday" style="margin-top:14px"></div>
+            <div class="muted small" id="streakDetail" style="margin-top:12px"></div>
+          </section>
+
+          <section class="card" aria-labelledby="achTitle">
+            <div class="cardHead">
+              <h3 id="achTitle">Achievements</h3>
+              <ion-button size="small" fill="clear" id="achOpenBtn"><span id="achCount">0 / 0</span>&nbsp;· View all</ion-button>
+            </div>
+            <div class="badgeRow" id="achRecent"></div>
           </section>
 
           <section class="card">
@@ -106,6 +134,9 @@
 
         <!-- HISTORY VIEW -->
         <div id="viewHistory" class="page" style="display:none">
+          <ion-button expand="block" fill="outline" id="historyRecapBtn" style="margin-bottom:12px">
+            <ion-icon slot="start" name="stats-chart-outline"></ion-icon>Weekly recaps
+          </ion-button>
           <ion-list class="inset" id="historyList"></ion-list>
           <div class="muted" style="padding: 8px 4px; font-size:13px">Swipe a workout left to delete it.</div>
         </div>
@@ -155,7 +186,24 @@
           <ion-item><ion-toggle id="beepToggle" justify="space-between">Beep on each rep</ion-toggle></ion-item>
           <ion-item><ion-toggle id="voiceToggle" justify="space-between">Voice countdown</ion-toggle></ion-item>
         </ion-list>
-        <div class="muted" style="padding: 0 20px; font-size: 12px">Each day is 5 sets at 85 / 80 / 75 / 70 / 65% of that day's target max. Settings apply to the selected exercise.</div>
+        <div class="muted" style="padding: 0 20px; font-size: 12px">Each day is 5 sets at 85 / 80 / 75 / 70 / 65% of that day's target max. Settings above apply to the selected exercise.</div>
+
+        <ion-list inset="true">
+          <ion-list-header><ion-label>Weekly goal (all exercises)</ion-label></ion-list-header>
+          <ion-item>
+            <ion-select id="weeklyGoal" label="Training days per week" interface="popover">
+              <ion-select-option value="2">2 days</ion-select-option>
+              <ion-select-option value="3">3 days</ion-select-option>
+              <ion-select-option value="4">4 days</ion-select-option>
+              <ion-select-option value="5">5 days</ion-select-option>
+              <ion-select-option value="6">6 days</ion-select-option>
+              <ion-select-option value="7">Every day</ion-select-option>
+            </ion-select>
+          </ion-item>
+          <ion-item><ion-toggle id="freezeToggle" justify="space-between">Streak freeze</ion-toggle></ion-item>
+        </ion-list>
+        <div class="muted" style="padding: 0 20px; font-size: 12px" id="weeklyGoalNote"></div>
+        <div class="muted" style="padding: 6px 20px 0; font-size: 12px">Streak freeze: after 3 weeks in a row at your goal, one missed week won't reset your weekly streak. It never counts as a completed week.</div>
 
         <div style="padding: 16px">
           <ion-button expand="block" id="saveSettingsBtn">Save settings</ion-button>
@@ -297,6 +345,51 @@
         </div>
       </ion-content>
     </ion-modal>
+    <!-- CELEBRATION (after a saved workout) -->
+    <ion-modal id="celebrateModal" aria-labelledby="celebrateTitle">
+      <ion-content>
+        <div class="page" id="celebrateBody"></div>
+      </ion-content>
+      <ion-footer class="ion-no-border">
+        <div class="ctaBar"><ion-button expand="block" id="celebrateDone" style="flex:1">Done</ion-button></div>
+      </ion-footer>
+    </ion-modal>
+
+    <!-- ACHIEVEMENTS -->
+    <ion-modal id="achModal" aria-labelledby="achModalTitle">
+      <ion-header>
+        <ion-toolbar>
+          <ion-title id="achModalTitle">Achievements</ion-title>
+          <ion-buttons slot="end"><ion-button id="closeAch">Close</ion-button></ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content>
+        <div class="page">
+          <p class="muted small" id="achSummary"></p>
+          <div id="achList"></div>
+        </div>
+      </ion-content>
+    </ion-modal>
+
+    <!-- WEEKLY RECAP -->
+    <ion-modal id="recapModal" aria-labelledby="recapTitle">
+      <ion-header>
+        <ion-toolbar>
+          <ion-title id="recapTitle">Your week in review</ion-title>
+          <ion-buttons slot="end"><ion-button id="closeRecap">Close</ion-button></ion-buttons>
+        </ion-toolbar>
+      </ion-header>
+      <ion-content>
+        <div class="page">
+          <div class="recapNav">
+            <ion-button fill="clear" id="recapPrev" aria-label="Previous week"><ion-icon slot="icon-only" name="chevron-back"></ion-icon></ion-button>
+            <div class="eyebrow" id="recapRange" aria-live="polite"></div>
+            <ion-button fill="clear" id="recapNext" aria-label="Next week"><ion-icon slot="icon-only" name="chevron-forward"></ion-icon></ion-button>
+          </div>
+          <div id="recapBody"></div>
+        </div>
+      </ion-content>
+    </ion-modal>
   </ion-app>
 
   <!-- Ionicons -->
@@ -304,6 +397,7 @@
   <script nomodule src="https://unpkg.com/ionicons@7.2.2/dist/ionicons/ionicons.js"></script>
 
   <script src="js/rep-detector.js"></script>
+  <script src="js/engagement.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

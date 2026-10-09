@@ -299,3 +299,95 @@ ion-alert.dark-alert { --background: #1c2230; --backdrop-opacity: 0.65; }
 
 .recordBlock { text-align: center; padding: 18px; border-radius: 18px; background: rgba(255, 255, 255, 0.04); margin-bottom: 12px; }
 .bigNumber { font-size: 60px; font-weight: 900; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+
+/* ---------- Engagement ---------- */
+.small { font-size: 13px; }
+.heroMsg { margin: 10px 0 0; font-size: 14px; color: var(--muted); font-weight: 600; }
+.dayDot.future .d { opacity: 0.45; }
+
+.weekGoalRow { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.weekGoalNum { font-size: 22px; font-weight: 850; font-variant-numeric: tabular-nums; }
+
+.invite { display: flex; align-items: center; gap: 12px; padding: 14px 10px 14px 14px; border-color: rgba(10, 132, 255, 0.4); background: linear-gradient(135deg, rgba(10, 132, 255, 0.16), rgba(10, 132, 255, 0.04)), var(--surface); }
+.inviteIcon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(10, 132, 255, 0.2); color: #64b5ff; font-size: 20px; flex: 0 0 auto; }
+.inviteText { flex: 1; min-width: 0; }
+.inviteTitle { font-weight: 800; }
+
+.badgeRow { display: flex; flex-wrap: wrap; gap: 8px; }
+.miniBadge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 11px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06); font-size: 13px; font-weight: 700;
+}
+.miniBadge.earned { background: rgba(var(--accent-rgb), 0.16); color: #ffc46b; }
+.miniBadge ion-icon { font-size: 16px; }
+
+.achSection { margin-bottom: 22px; }
+.achSection h2 { margin: 0 0 10px; }
+.badgeGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.badge {
+  border-radius: 18px; padding: 14px 12px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.badgeIcon { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; margin-bottom: 4px; }
+.badge.earned .badgeIcon { background: radial-gradient(circle at 35% 30%, #ffc46b, var(--accent)); color: #1a1000; box-shadow: 0 6px 18px rgba(var(--accent-rgb), 0.35); }
+.badge.locked .badgeIcon { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
+.badge.locked .badgeName, .badge.locked .badgeDesc { opacity: 0.6; }
+.badgeName { font-weight: 800; font-size: 14px; }
+.badgeDesc { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.badgeStatus { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.badge.earned .badgeStatus { color: #ffc46b; }
+.badge .progressTrack { width: 80%; height: 4px; margin-top: 6px; }
+
+/* Celebration */
+.celebrate { position: relative; text-align: center; padding-top: 18px; }
+.celebrate > * { animation: rise 420ms cubic-bezier(.2, .8, .2, 1) both; }
+.celebrate > *:nth-child(2) { animation-delay: 60ms; }
+.celebrate > *:nth-child(3) { animation-delay: 120ms; }
+.celebrate > *:nth-child(n+4) { animation-delay: 180ms; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.celebrateBurst {
+  width: 92px; height: 92px; margin: 0 auto 12px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 46px; color: #1a1000;
+  background: radial-gradient(circle at 35% 30%, #ffd08a, var(--accent));
+  box-shadow: 0 0 0 10px rgba(var(--accent-rgb), 0.14), 0 12px 40px rgba(var(--accent-rgb), 0.45);
+  animation: pop 520ms cubic-bezier(.2, 1.4, .4, 1) both;
+}
+.celebrateBurst.soft { background: radial-gradient(circle at 35% 30%, #9fd0ff, #0a84ff); box-shadow: 0 0 0 10px rgba(10, 132, 255, 0.14), 0 12px 40px rgba(10, 132, 255, 0.35); }
+@keyframes pop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.celebrate h1 { margin: 0; font-size: 30px; font-weight: 900; letter-spacing: -0.02em; outline: none; }
+.celebrateHeadline { margin: 8px 0 0; font-weight: 800; color: var(--accent); }
+.celebrateMsg { margin: 4px auto 18px; max-width: 320px; }
+.celebrate .statGrid { text-align: left; }
+.celebrateBlock { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 14px; margin-bottom: 10px; }
+.celebrateBlock .cardHead { margin-bottom: 8px; }
+.celebrateBlock .progressFill { transition: width 900ms cubic-bezier(.2, .8, .2, 1); }
+.celebrateBlock > * + * { margin-top: 6px; }
+.targetLine { display: flex; align-items: center; gap: 8px; font-weight: 800; }
+.targetLine.ok { color: var(--good); }
+.streakLine { margin: 0 0 10px; }
+.nextBlock .mono { font-weight: 700; }
+
+.confetti { position: absolute; inset: -20px 0 auto 0; height: 0; pointer-events: none; z-index: 5; }
+.confetti span { position: absolute; top: 0; width: 8px; height: 14px; border-radius: 2px; animation: fall 2.2s cubic-bezier(.3, .6, .5, 1) forwards; }
+@keyframes fall { from { opacity: 1; translate: 0 0; } to { opacity: 0; translate: 0 520px; } }
+
+/* Weekly recap */
+.recapNav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.recapHero { text-align: center; padding: 10px 0 18px; }
+.goalChip { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 7px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); font-weight: 700; font-size: 14px; }
+.goalChip.met { background: rgba(48, 209, 88, 0.16); color: var(--good); }
+.recapHighlight { font-size: 20px; font-weight: 850; margin: 6px 0; }
+.timeline { display: flex; gap: 8px; height: 110px; align-items: stretch; margin-top: 10px; }
+.tlDay { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.tlBarWrap { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.tlBar { width: 100%; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
+.tlBar.on { background: var(--accent); }
+.tlLabel { font-size: 11px; font-weight: 700; color: var(--muted); }
+.recapClosing { font-weight: 700; text-align: center; margin: 18px 0 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; animation-delay: 0ms !important; transition-duration: 1ms !important; }
+  .confetti { display: none; }
+}
