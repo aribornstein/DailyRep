@@ -18,16 +18,13 @@
       minInterval: 0.8,  // s between counted reps
       armTime: 0.6       // s of quiet (e.g. hanging) before counting; walking never gets quiet
     },
-    // Body segment rotates (thigh for squats, torso for sit-ups): count tilt away from a still pose and back.
-    tilt: {
-      gravityTau: 0.15,
-      high: 40,          // degrees from start pose to count as "down"
-      low: 18,           // degrees to count as returned
-      minDown: 0.2,      // s spent past `high`
-      minInterval: 0.6,
-      stillTol: 0.6,     // m/s^2 deviation of |a| from gravity
-      stillTime: 0.5,    // s of stillness needed to capture the start pose
-      baselineTau: 3     // s, slow re-centering while resting in the start pose
+    // Phone flat on the chest (sit-ups): the screen normal is the chest normal, so torso angle is absolute.
+    chest: {
+      gravityTau: 0.08,
+      high: 60,          // degrees of torso lift that count as "up"
+      low: 30,           // degrees that count as lying back down (re-arms the next rep)
+      maxHigh: 75,       // low sensitivity must still be reachable by a normal sit-up
+      minInterval: 0.6
     }
   };
 
@@ -86,59 +83,34 @@
     return { push, reset, level: () => level, ready: () => armed };
   }
 
-  function createTilt(cfg) {
-    let g = null, lastT = null, base = null;
-    let dev = 0, stillSince = null, down = false, downSince = 0, lastRepT = -Infinity;
-    let angle = 0;
+  function createChest(cfg) {
+    let g = null, lastT = null, angle = 0;
+    let armed = false, up = false, lastRepT = -Infinity;
 
-    function reset() { g = null; lastT = null; base = null; dev = 0; stillSince = null; down = false; }
+    function reset() { g = null; lastT = null; armed = false; up = false; }
 
     function push(x, y, z, t) {
       if (lastT === null || t <= lastT || t - lastT > 0.5) {
-        // Keep the captured start pose across gaps; only restart the filters.
-        g = [x, y, z]; lastT = t; dev = 0; stillSince = null; return false;
+        g = [x, y, z]; lastT = t; return false;
       }
       const dt = t - lastT; lastT = t;
       const kg = kFor(dt, cfg.gravityTau);
       g[0] += (x - g[0]) * kg; g[1] += (y - g[1]) * kg; g[2] += (z - g[2]) * kg;
-      const gl = len(g) || 1;
-      const u = [g[0] / gl, g[1] / gl, g[2] / gl];
+      // abs(): screen may face the chest or away. Divide by real gravity, not |g|: the torso's own
+      // acceleration is along the chest (in the screen plane) and must not change the angle.
+      angle = Math.acos(Math.min(1, Math.abs(g[2]) / 9.81)) * 180 / Math.PI;
 
-      dev += (Math.abs(Math.hypot(x, y, z) - gl) - dev) * kFor(dt, 0.2);
-      if (dev < cfg.stillTol) { if (stillSince === null) stillSince = t; } else stillSince = null;
-      const still = stillSince !== null && t - stillSince >= cfg.stillTime;
-
-      if (!base) {
-        if (still) base = u;
-        angle = 0;
-        return false;
-      }
-
-      const dot = Math.max(-1, Math.min(1, u[0] * base[0] + u[1] * base[1] + u[2] * base[2]));
-      angle = Math.acos(dot) * 180 / Math.PI;
-
-      if (!down && still && angle < cfg.low) {
-        // Phone shifts in a pocket over a set; drift the start pose toward the current still pose.
-        const kb = kFor(dt, cfg.baselineTau);
-        const b = [base[0] + (u[0] - base[0]) * kb, base[1] + (u[1] - base[1]) * kb, base[2] + (u[2] - base[2]) * kb];
-        const bl = len(b) || 1;
-        base = [b[0] / bl, b[1] / bl, b[2] / bl];
-      }
-
-      if (!down && angle > cfg.high) { down = true; downSince = t; return false; }
-      if (down && angle < cfg.low) {
-        down = false;
-        if (t - downSince >= cfg.minDown && t - lastRepT >= cfg.minInterval) { lastRepT = t; return true; }
+      // Only count once the user has been seen lying back, so starting the set sitting up adds no rep.
+      if (angle < cfg.low) { armed = true; up = false; return false; }
+      if (armed && !up && angle > cfg.high && t - lastRepT >= cfg.minInterval) {
+        up = true;
+        lastRepT = t;
+        return true;
       }
       return false;
     }
 
-    return {
-      push,
-      reset,
-      level: () => (base ? Math.min(1.5, angle / cfg.high) : 0),
-      ready: () => !!base
-    };
+    return { push, reset, level: () => Math.min(1.5, angle / cfg.high), ready: () => armed };
   }
 
   function create(mode, opts = {}) {
@@ -148,11 +120,11 @@
       cfg.threshold *= f;
       return createVertical(cfg);
     }
-    if (mode === 'tilt') {
-      const cfg = { ...DEFAULTS.tilt, ...opts };
-      cfg.high *= f;
+    if (mode === 'chest') {
+      const cfg = { ...DEFAULTS.chest, ...opts };
+      cfg.high = Math.min(cfg.maxHigh, cfg.high * f);
       cfg.low = Math.min(cfg.low, cfg.high * 0.6);
-      return createTilt(cfg);
+      return createChest(cfg);
     }
     throw new Error(`Unknown rep detector mode: ${mode}`);
   }

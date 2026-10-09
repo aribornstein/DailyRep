@@ -8,8 +8,8 @@ Each exercise follows a linear plan from your current max to a goal max (for exa
 |---|---|---|
 | Push-ups | Tap (nose/chin on the screen) | On the floor under your face |
 | Pull-ups | Accelerometer (vertical motion) | Front pocket, screen on |
-| Squats | Accelerometer (thigh tilt) | Front trouser pocket, screen on |
-| Sit-ups | Accelerometer (torso tilt) | Flat against your chest |
+| Squats | Accelerometer (vertical motion) | Held out in front of your chest with both hands |
+| Sit-ups | Accelerometer (torso angle) | Flat against your chest, held with both hands |
 
 ## Features
 
@@ -50,15 +50,25 @@ iOS freezes JavaScript timers and sensor events while the screen is locked or th
 
 Detection is in [js/rep-detector.js](js/rep-detector.js). It is pure logic with no DOM, so it can be unit-tested in Node.
 
-- **Vertical mode (pull-ups):**
+- **Vertical mode (pull-ups, squats):**
   - It separates gravity from body movement with a slow filter, then looks only at movement along gravity. This works for any phone orientation and either platform sign convention.
-  - A rep is an upward push followed by a slowdown at the top. Dead-hang pauses, top holds and slow or fast reps each count once.
-  - Counting arms only after a brief still hang, and anything faster than walking pace disarms it. Walking to the bar doesn't add reps.
-  - The old detector required more than 4 m/s² of total acceleration change. Realistic pull-ups peak around 2–3 m/s², so it missed most reps, and it could count both the up and down halves.
-- **Tilt mode (squats, sit-ups):** it records the phone's resting orientation once you are still, then counts each time the thigh or torso rotates past a threshold (40° by default) and comes back. Quarter squats don't count. The resting orientation re-centers slowly to handle the phone shifting in a pocket.
+  - A pull-up is an upward push followed by a slowdown at the top. Dead-hang pauses, top holds and slow or fast reps each count once.
+  - A squat is the mirror image: the phone drops with your chest, then rises. The rep counts when you are standing again, and a pause at the bottom still counts once.
+    - A chest drop of about 0.25 m (half squat) or more counts; dips of 0.15 m or less don't.
+    - Arms drifting by up to 25° while you hold the phone doesn't break counting.
+    - Thigh-tilt counting got 0 of 10 reps with the phone held out in front, because the phone barely rotates.
+  - Counting arms only after a brief still moment (hanging, or standing holding the phone), and anything faster than walking pace disarms it. Walking doesn't add reps.
+  - The old pull-up detector required more than 4 m/s² of total acceleration change. Realistic pull-ups peak around 2–3 m/s², so it missed most reps, and it could count both the up and down halves.
+- **Chest mode (sit-ups):** with the phone flat against your chest, the axis through the screen points along your chest, so torso angle is read directly. It is about 0° lying down and about 80° sitting up.
+  - A rep counts when you rise past 60°. You must lie back below 30° before the next one counts.
+  - It works in portrait or landscape and with the screen facing in or out.
+  - It tolerates the phone being tilted about 20° in your hands.
+  - Starting the set sitting up (looking at the screen) adds no rep: counting waits until you have lain back once.
+  - The torso's own acceleration lies in the screen plane, so even fast reps don't distort the angle.
+  - Crunches (about 35°) don't count; on High sensitivity, 50° partial sit-ups do.
 - **Sensitivity** (Settings) scales the thresholds:
   - **Low:** fewer false reps.
-  - **High:** catches slow pull-ups and crunch-sized sit-ups.
+  - **High:** catches slow pull-ups, shallow squats and partial sit-ups.
 
 ## Project layout
 
@@ -81,10 +91,12 @@ node --test
 The detector tests generate physics-based synthetic sensor data with these conditions:
 - random phone orientations and sensor noise
 - leg swing
-- dead-hang and top pauses
+- dead-hang, top and bottom pauses
 - slow and fast reps
+- squats with the phone held out and arms drifting
 - walking
-- quarter squats
+- sit-ups with the phone at any in-plane angle, facing in or out, tilted in the hands, or jolted
+- crunches that are too shallow to count
 - gaps from a locked screen
 
 ---
@@ -114,7 +126,7 @@ The guiding constraint is to stay a client-side SPA: everything runs on the devi
 
 ### Phase 3: Complete "get into shape" programs
 1. **More exercises:**
-   - Lunges and step-ups (tilt mode).
+   - Lunges and step-ups (vertical mode, phone held out like squats).
    - Burpees and jumping jacks (vertical mode).
    - Dips (vertical mode).
    - Plank and wall-sit timers.

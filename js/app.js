@@ -12,17 +12,20 @@ const EXERCISES = {
   pullups: {
     name: 'Pull-ups', icon: 'barbell-outline', counting: 'motion', motion: 'vertical',
     defaults: { startMax: 3, goalMax: 8, baseRestSeconds: 150, minRestSeconds: 90, maxRestSeconds: 300 },
-    howTo: 'Phone in a front pocket, screen on. Hang still for a second, then pull. Reps count at the top.'
+    howTo: 'Phone in a front pocket, screen on. Hang still for a second, then pull. Reps count at the top.',
+    readyHint: 'Hang still to start counting'
   },
   squats: {
-    name: 'Squats', icon: 'walk-outline', counting: 'motion', motion: 'tilt',
+    name: 'Squats', icon: 'walk-outline', counting: 'motion', motion: 'vertical',
     defaults: { startMax: 20, goalMax: 60, baseRestSeconds: 75, minRestSeconds: 45, maxRestSeconds: 180 },
-    howTo: 'Phone in a front trouser pocket, screen on. Stand still for a second, then squat to parallel.'
+    howTo: 'Hold the phone out at chest height. Stand still, then squat to parallel and stand tall. Reps count when you are back up.',
+    readyHint: 'Stand still to start counting'
   },
   situps: {
-    name: 'Sit-ups', icon: 'accessibility-outline', counting: 'motion', motion: 'tilt',
+    name: 'Sit-ups', icon: 'accessibility-outline', counting: 'motion', motion: 'chest',
     defaults: { startMax: 15, goalMax: 50, baseRestSeconds: 75, minRestSeconds: 45, maxRestSeconds: 180 },
-    howTo: 'Hold the phone flat on your chest. Lie still for a second, then sit all the way up.'
+    howTo: 'Hold the phone flat against your chest with both hands. Lie back, then sit all the way up. Reps count at the top.',
+    readyHint: 'Lie back to start counting'
   }
 };
 const INTENSITY = [0.85, 0.80, 0.75, 0.70, 0.65];
@@ -385,7 +388,7 @@ function motionStatus() {
     return Date.now() - motion.startedAt > 2000 ? { cls: '', text: 'No sensor data. Use +1.' } : { cls: 'wait', text: 'Starting sensor…' };
   }
   if (!motion.detector.ready()) {
-    return { cls: 'wait', text: EXERCISES[activeExercise].motion === 'vertical' ? 'Hang still to start counting' : 'Hold still to calibrate' };
+    return { cls: 'wait', text: EXERCISES[session.active ? session.exercise : activeExercise].readyHint || 'Hold still to calibrate' };
   }
   return { cls: 'live', text: 'Counting reps' };
 }
